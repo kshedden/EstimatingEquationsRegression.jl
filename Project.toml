@@ -1,0 +1,4 @@
+name = "GEE"
+uuid = "29055884-00e7-4984-94b8-2baec6a723d6"
+authors = ["Kerby Shedden <kshedden@umich.edu>"]
+version = "0.1.0"
