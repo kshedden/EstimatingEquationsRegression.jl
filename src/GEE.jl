@@ -6,11 +6,11 @@ using StatsBase: CoefTable, StatisticalModel, RegressionModel
 using GLM: Link, LinPredModel, LinPred, ModResp, linkfun, linkinv, glmvar, mueta
 using GLM: GeneralizedLinearModel, dispersion_parameter
 
-import StatsBase: coef, coeftable, vcov, stderr, dof, dof_residual
+import StatsBase: coef, coeftable, vcov, stderr, dof, dof_residual, fit
 
 export fit, fit!, GeneralizedEstimatingEquationsModel, vcov, stderr, coef
 export CorStruct, IndependenceCor, ExchangeableCor, corparams, dispersion, dof
-export scoretest, modelmatrix
+export scoretest, modelmatrix, gee
 
 const FP = AbstractFloat
 const FPVector{T<:FP} = AbstractArray{T,1}

@@ -1,7 +1,4 @@
-using Test, DataFrames, CSV
-
-# DEBUG
-push!(LOAD_PATH, "/afs/umich.edu/user/k/s/kshedden/Projects/GEE.jl/src")
+using Test, DataFrames, CSV, StatsBase, StatsModels
 
 using GEE
 using GLM: Normal, IdentityLink, LogLink, LogitLink, glm
@@ -73,6 +70,18 @@ end
     @test isapprox(coef(m), [-0.054514, 0.962038, -1.011813, 0.032347, 0.052044], atol=1e-4)
     @test isapprox(stderr(m), [0.086152, 0.087786, 0.047687, 0.044884,0.051413], atol=1e-4)
     @test isapprox(dispersion(m), 5.03324, atol=1e-4)
+
+    # Check fitting using formula/dataframe
+    df = DataFrame(X)
+    df[!, :g] = g
+    df[!, :y] = y
+    f = @formula(y ~ 0 + x1 + x2 + x3 + x4 + x5)
+    m1 = fit(GeneralizedEstimatingEquationsModel, f, df, g, Normal(), IndependenceCor(), IdentityLink())
+    m2 = gee(f, df, g, Normal(), IndependenceCor(), IdentityLink())
+    @test isapprox(coef(m), coef(m1), atol=1e-8)
+    @test isapprox(stderr(m), stderr(m1), atol=1e-8)
+    @test isapprox(coef(m), coef(m2), atol=1e-8)
+    @test isapprox(stderr(m), stderr(m2), atol=1e-8)
 
     # With independence correlation, GLM and GEE have the same parameter estimates
     m0 = glm(X, y, Normal(), IdentityLink())
