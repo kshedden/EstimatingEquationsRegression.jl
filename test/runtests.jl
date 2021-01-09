@@ -1,4 +1,4 @@
-using Test, DataFrames, CSV, StatsBase, StatsModels
+using Test, DataFrames, CSV, StatsBase, StatsModels, LinearAlgebra
 
 using GEE
 using GLM: Normal, IdentityLink, LogLink, LogitLink, glm
@@ -18,12 +18,13 @@ function gennormal(n=2000, p=5, m=200)
     Random.seed!(123)
     X = genx(n, p)
     lp = X[:, 2] - X[:, 3]
-    y = lp + 2*randn(n)
+    y = lp
+    u = 2*randn(n) # Independent unexplained variation
     g = rand(1:m, n)
     sort!(g)
     e = randn(m)
-    f = [e[i] for i in g]
-    y .= y + f
+    f = [e[i] for i in g] # Exchangeable group effects
+    y .= y + f + u
     return y, X, g
 end
 
@@ -31,13 +32,13 @@ function genpoisson(n=2000, p=5, m=200)
     Random.seed!(123)
     X = genx(n, p)
     lp = X[:, 2] - X[:, 3]
-    ey = exp.(lp)
+    ey = exp.(lp) # Marginal mean
     g = rand(1:m, n)
     sort!(g)
     h = randn(m)/sqrt(2)
     f = [h[i] for i in g]
     e = randn(n)/sqrt(2) + f
-    u = cdf(Normal(), e)
+    u = cdf(Normal(), e) # Gaussian copula
     y = [Float64(floor(quantile(Poisson(ey[i]), u[i]))) for i in 1:n]
     return y, X, g
 end
@@ -46,13 +47,13 @@ function genbinomial(n=2000, p=5, m=200)
     Random.seed!(123)
     X = genx(n, p)
     lp = X[:, 2] - X[:, 3]
-    ey = 1 ./ (1 .+ exp.(-lp))
+    ey = 1 ./ (1 .+ exp.(-lp)) # Marginal mean
     g = rand(1:m, n)
     sort!(g)
     h = randn(m)/sqrt(2)
     f = [h[i] for i in g]
     e = randn(n)/sqrt(2) + f
-    u = cdf(Normal(), e)
+    u = cdf(Normal(), e) # Gaussian copula
     y = [u[i] < ey[i] ? 1.0 : 0.0 for i in 1:n]
     return y, X, g
 end
@@ -63,6 +64,54 @@ function save(y, X, g)
     da[:, :g] = g
     CSV.write("tmp.csv", da)
 end
+
+@testset "AR1 covsolve" begin
+
+    Random.seed!(123)
+
+    makeAR = (r, d) -> [r^abs(i-j) for i in 1:d, j in 1:d]
+
+    for d in [1, 2, 4]
+       for q in [1, 3]
+
+            c = AR1Cor(0.4)
+            v = q == 1 ? randn(d) : randn(d, q)
+            sd = rand(d)
+	    sm = Diagonal(sd)
+
+            mat = makeAR(0.4, d)
+            vi = (sm \ (mat \ (sm \ v)))
+            vi2 = GEE.covsolve(c, sd, v)
+            @test isapprox(vi, vi2)
+
+        end
+    end
+end
+
+
+@testset "Exchangeable covsolve" begin
+
+    Random.seed!(123)
+
+    makeEx = (r, d) -> [i==j ? 1 : r for i in 1:d, j in 1:d]
+
+    for d in [1, 2, 4]
+       for q in [1, 3]
+
+            c = ExchangeableCor(0.4)
+            v = q == 1 ? randn(d) : randn(d, q)
+            sd = rand(d)
+	    sm = Diagonal(sd)
+
+            mat = makeEx(0.4, d)
+            vi = (sm \ (mat \ (sm \ v)))
+            vi2 = GEE.covsolve(c, sd, v)
+            @test isapprox(vi, vi2)
+
+        end
+    end
+end
+
 
 @testset "linear/normal independence model" begin
     y, X, g = gennormal()

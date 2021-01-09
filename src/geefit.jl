@@ -3,8 +3,8 @@ abstract type AbstractGEE <: LinPredModel end
 """
     GEEResp
 
-The response vector, grouping information, family, link, and vectors
-derived from the response.
+The response vector, grouping information, and vectors derived from
+the response.  Vectors here are all n-dimensional.
 """
 struct GEEResp{T<:Real} <: ModResp
 
@@ -35,6 +35,7 @@ struct GEEResp{T<:Real} <: ModResp
     "`dμdη`: derivative of mean with respect to linear predictor"
     dμdη::Array{T,1}
 
+    "`viresid`: whitened residuals"
     viresid::Array{T,1}
 
     "`offset`: offset is added to the linear predictor"
@@ -44,7 +45,7 @@ end
 """
     GEEprop
 
-Properties that define the model fit using GEE - link, distribution, and
+Properties that define a GLM fit using GEE - link, distribution, and
 working correlation structure.
 """
 struct GEEprop{D<:UnivariateDistribution,L<:Link,R<:CorStruct}
@@ -72,7 +73,7 @@ mutable struct GEECov
     "`nacov`: the naive (model-dependent) covariance matrix"
     nacov::Array{Float64,2}
 
-    "`scrcov`: the empirical covariance of the score vectors"
+    "`scrcov`: the empirical Gram matrix of the score vectors (not scaled by n)"
     scrcov::Array{Float64,2}
 end
 
@@ -114,7 +115,7 @@ end
 function _iterprep(p::LinPred, r::GEEResp, q::GEEprop)
     updateη!(p, r.η, r.offset)
     r.μ .= linkinv.(q.link, r.η)
-    r.resid .= r.y - r.μ
+    r.resid .= r.y .- r.μ
     r.sd .= glmvar.(q.dist, r.μ)
     r.sd .= sqrt.(r.sd)
     r.sresid .= r.resid ./ r.sd
@@ -169,9 +170,7 @@ function _fit!(
 
     pp.beta0 = start
 
-    # Allocate workspace
     n, p = size(pp.X)
-
     last = false
     cvg = false
 
@@ -274,9 +273,11 @@ dof(x::GeneralizedEstimatingEquationsModel) =
 
 """
     fit(GeneralizedEstimatingEquationsModel, X, y, d, [l = canonicallink(d)]; <keyword arguments>)
-Fit a generalized linear model to data. `X` and `y` can either be a matrix and a
-vector, respectively, or a formula and a data frame. `d` must be a
-`UnivariateDistribution`, and `l` must be a [`Link`](@ref), if supplied.
+Fit a generalized linear model to data using generalized estimating
+equations.  `X` and `y` can either be a matrix and a vector,
+respectively, or a formula and a data frame. `d` must be a
+`UnivariateDistribution`, and `l` must be a [`Link`](@ref), if
+supplied.
 # Keyword Arguments
 - `dofit::Bool=true`: Determines whether model will be fit
 - `wts::Vector=similar(y,0)`: Not implemented.
@@ -321,7 +322,8 @@ end
 
 """
     gee(F, D, args...; kwargs...)
-Fit a generalized estimating equations model to data. Alias for `fit(GeneralizedEstimatingEquationsModel, ...)`.
+Fit a generalized linear model to data using generalized estimating
+equations. Alias for `fit(GeneralizedEstimatingEquationsModel, ...)`.
 See [`fit`](@ref) for documentation.
 """
 gee(F, D, args...; kwargs...) =
