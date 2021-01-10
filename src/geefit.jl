@@ -272,12 +272,15 @@ dof(x::GeneralizedEstimatingEquationsModel) =
 
 
 """
-    fit(GeneralizedEstimatingEquationsModel, X, y, d, [l = canonicallink(d)]; <keyword arguments>)
+    fit(GeneralizedEstimatingEquationsModel, X, y, g, d, c, [l = canonicallink(d)]; <keyword arguments>)
+
 Fit a generalized linear model to data using generalized estimating
 equations.  `X` and `y` can either be a matrix and a vector,
-respectively, or a formula and a data frame. `d` must be a
-`UnivariateDistribution`, and `l` must be a [`Link`](@ref), if
-supplied.
+respectively, or a formula and a data frame. `g` is a vector
+containing group labels, and elements in a group must be consecutive
+in the data.  `d` must be a `UnivariateDistribution`, `c` must be a
+`CorStruct` and `l` must be a [`Link`](@ref), if supplied.
+
 # Keyword Arguments
 - `dofit::Bool=true`: Determines whether model will be fit
 - `wts::Vector=similar(y,0)`: Not implemented.
