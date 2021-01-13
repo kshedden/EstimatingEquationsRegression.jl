@@ -17,8 +17,6 @@ collected by time, we use a first-order autoregressive working
 correlation model.
 
 ```jldoctest
-julia> using DataFrames, GEE, RDatasets
-
 julia> slp = dataset("lme4", "sleepstudy");
 
 julia> slp = sort(slp, :Subject);
@@ -113,6 +111,19 @@ julia> corparams(m.model)
 0.0638658332586221
 ```
 
+Since GEE estimation is based on quasi-likelihood, there is no
+likelihood ratio test for comparing nested models.  A score test can
+be used instead, as shown below.  Note that the parent model must not
+be fit before conducting the score test.
+
+```
+julia> m1 = gee(@formula(Use1 ~ Age + LivCh + Urban), con, con[:, :District], Binomial(), ExchangeableCor(), LogitLink(); dofit=false);
+
+julia> m0 = gee(@formula(Use1 ~ Age + Urban), con, con[:, :District], Binomial(), ExchangeableCor(), LogitLink());
+
+julia> scoretest(m1.model, m0.model)
+```
+
 Below we look at data on length of hospital stay for patients
 undergoing a cardiovascular procedure.  This example illustrates how
 the variance function can be changed to a non-standard form.  Modeling
@@ -125,8 +136,6 @@ example, as is often the case, the parameter estimates and standard
 errors are not strongly sensitive to the variance model.
 
 ```jldoctest
-julia> using GLM, GEE, RDatasets, StatsModels
-
 julia> azpro = dataset("COUNT", "azpro");
 
 julia> azpro[!, :Los] = Array{Float64}(azpro[:, :Los]);

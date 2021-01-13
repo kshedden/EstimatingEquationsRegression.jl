@@ -49,6 +49,8 @@ function scoretest(model::AbstractGEE, submodel::AbstractGEE)
     !model.fit || throw("model must not have been fit before calling scoretest")
     size(xm, 1) == size(xs, 1) ||
         throw(error("scoretest models must have same number of rows"))
+    size(xs, 2) < size(xm, 2) ||
+        throw(error("scoretest submodel must have smaller rank than parent model"))
     typeof(Distribution(model)) == typeof(Distribution(submodel)) ||
         throw(error("scoretest models must have same distributions"))
     typeof(Corstruct(model)) == typeof(Corstruct(submodel)) ||
