@@ -58,6 +58,14 @@ struct GEEprop{D<:UnivariateDistribution,L<:Link,R<:CorStruct}
 
     "`cor`: the working correlation structure"
     cor::R
+
+    "`cov_type`: the type of parameter covariance (default is robust)"
+    cov_type::String
+
+end
+
+function GEEprop(dist, link, cor; cov_type="robust")
+    GEEprop(dist, link, cor, cov_type)
 end
 
 """
@@ -67,11 +75,20 @@ Covariance matrices for the parameter estimates.
 """
 mutable struct GEECov
 
-    "`cov`: the robust covariance matrix"
+    "`cov`: the parameter covariance matrix"
     cov::Array{Float64,2}
+
+    "`rcov`: the robust covariance matrix"
+    rcov::Array{Float64,2}
 
     "`nacov`: the naive (model-dependent) covariance matrix"
     nacov::Array{Float64,2}
+
+    "`mdcov`: the Mancel-DeRouen bias-reduced robust covariance matrix"
+    mdcov::Array{Float64,2}
+
+    "`kccov`: the Kauermann-Carroll bias-reduced robust covariance matrix"
+    kccov::Array{Float64,2}
 
     "`scrcov`: the empirical Gram matrix of the score vectors (not scaled by n)"
     scrcov::Array{Float64,2}
@@ -79,7 +96,7 @@ end
 
 
 function GEECov(p::Int)
-    GEECov(zeros(p, p), zeros(p, p), zeros(p, p))
+    GEECov(zeros(p, p), zeros(p, p), zeros(p, p), zeros(p, p), zeros(p, p), zeros(p, p))
 end
 
 mutable struct GeneralizedEstimatingEquationsModel{G<:GEEResp,L<:LinPred} <: AbstractGEE
@@ -144,6 +161,51 @@ function _iterate(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, last::Bool) whe
     end
 end
 
+# Calculate the Mancl-DeRouen and Kauermann-Carroll bias-corrected
+# parameter covariance matrices.  This must run after the parameter
+# fitting because it requires the naive covariance matrix and scale
+# parameter estimates.
+function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
+
+    m = size(p.X, 2)
+    bcm_md = zeros(m, m)
+    bcm_kc = zeros(m, m)
+
+    for j = 1:size(r.grp, 1)
+
+        # Computation of common quantities
+        i1, i2 = r.grp[j, 1], r.grp[j, 2]
+        updateD!(p, r.dμdη[i1:i2], i1, i2)
+	vid = covsolve(q.cor, r.sd[i1:i2], p.D)
+	vid .= vid ./ di
+	h = p.D * c.nacov * vid'
+	m = i2 - i1 + 1
+
+	# Mancl-DeRouen
+	ar = (I(m) - h) \ r.resid[i1:i2]
+	sr = covsolve(q.cor, r.sd[i1:i2], ar)
+        sr = p.D' * sr
+        bcm_md .= bcm_md + sr * sr'
+
+	# Kauermann-Carroll
+	eval, evec = eigen(I(m) - h)
+        eval .= (eval + abs.(eval)) ./ 2
+	eval2 = 1 ./ sqrt.(eval)
+        eval2[eval .== 0] .= 0
+	ar = evec * diagm(eval2) * evec' * r.resid[i1:i2]
+	sr = covsolve(q.cor, r.sd[i1:i2], real(ar))
+        sr = p.D' * sr
+        bcm_kc .= bcm_kc + sr * sr'
+
+   end
+
+   bcm_md .= bcm_md ./ di^2
+   bcm_kc .= bcm_kc ./ di^2
+   c.mdcov .= c.nacov * bcm_md * c.nacov
+   c.kccov .= c.nacov * bcm_kc * c.nacov
+
+end
+
 
 function _fit!(
     m::AbstractGEE,
@@ -190,11 +252,19 @@ function _fit!(
 
     end
 
-    m.cc.cov = nacov \ scrcov / nacov
+    m.cc.rcov = nacov \ scrcov / nacov
     m.cc.nacov = inv(nacov) .* dispersion(m)
 
     cvg || throw(ConvergenceException(maxiter))
     m.fit = true
+
+    # Update the bias-corrected parameter covariances
+    di = dispersion(m)
+    _update_bc!(pp, rr, qq, cc, di)
+
+    # Set the default covariance
+    cc.cov = vcov(m, cov_type=qq.cov_type)
+
     m
 
 end
@@ -237,23 +307,31 @@ function groupix(g::AbstractVector)
 
 end
 
-function vcov(m::AbstractGEE; covtype = "robust")
-    if covtype == "robust"
+function vcov(m::AbstractGEE; cov_type::String = "")
+    if cov_type == ""
+        # Default covariance
         return m.cc.cov
-    elseif covtype == "naive"
+    elseif cov_type == "robust"
+        return m.cc.rcov
+    elseif cov_type == "naive"
         return m.cc.nacov
+    elseif cov_type == "md"
+        return m.cc.mdcov
+    elseif cov_type == "kc"
+        return m.cc.kccov
     else
         return nothing
     end
 end
 
-function stderror(m::AbstractGEE; covtype = "robust")
-    return sqrt.(diag(vcov(m; covtype = covtype)))
+function stderror(m::AbstractGEE; cov_type = "robust")
+    return sqrt.(diag(vcov(m; cov_type = cov_type)))
 end
 
-function coeftable(mm::AbstractGEE; level::Real = 0.95, covtype = "robust")
+function coeftable(mm::AbstractGEE; level::Real = 0.95, cov_type::String = "")
+    cov_type = (cov_type == "") ? mm.qq.cov_type : cov_type
     cc = coef(mm)
-    se = stderror(mm; covtype = covtype)
+    se = stderror(mm; cov_type = cov_type)
     zz = cc ./ se
     p = 2 * ccdf.(Ref(Normal()), abs.(zz))
     ci = se * quantile(Normal(), (1 - level) / 2)
@@ -282,6 +360,9 @@ in the data.  `d` must be a `UnivariateDistribution`, `c` must be a
 `CorStruct` and `l` must be a [`Link`](@ref), if supplied.
 
 # Keyword Arguments
+- `cov_type::String`: Type of covariance estimate for parameters. Defaults
+to "robust", other options are "naive", "md" (Mancl-DeRouen debiased) and
+"kc" (Kauermann-Carroll debiased).xs
 - `dofit::Bool=true`: Determines whether model will be fit
 - `wts::Vector=similar(y,0)`: Not implemented.
 Can be length 0 to indicate no weighting (default).
@@ -304,6 +385,7 @@ function fit(
     d::UnivariateDistribution,
     c::CorStruct,
     l::Link = canonicallink(d);
+    cov_type::String = "robust",
     dofit::Bool = true,
     wts::AbstractVector{<:Real} = similar(y, 0),
     offset::AbstractVector{<:Real} = similar(y, 0),
@@ -317,7 +399,7 @@ function fit(
     (gi, mg) = groupix(g)
     rr = GEEResp(y, gi, wts, offset)
     p = size(X, 2)
-    res = M(rr, DensePred(X, mg), GEEprop(d, l, c), GEECov(p), false)
+    res = M(rr, DensePred(X, mg), GEEprop(d, l, c, cov_type), GEECov(p), false)
 
     return dofit ? fit!(res, fitargs...) : res
 

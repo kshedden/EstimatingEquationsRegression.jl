@@ -6,17 +6,17 @@ DocTestSetup = quote
 end
 ```
 
-The sleepstudy data contains data from a study of subjects
-experiencing sleep deprivation.  Reaction times were measured at
-baseline (day 0) and after each of several consecutive days of sleep
-deprivation (3 hours of sleep per night).  This example fits a linear
-model to the reaction times, with the mean reaction time being modeled
-as a linear function of the number of days that a subject has been on
-the study.  The data are clustered by subject, and since the data are
-collected by time, we use a first-order autoregressive working
+The sleepstudy data are from a study of subjects experiencing sleep
+deprivation.  Reaction times were measured at baseline (day 0) and
+after each of several consecutive days of sleep deprivation (3 hours
+of sleep per night).  This example fits a linear model to the reaction
+times, with the mean reaction time being modeled as a linear function
+of the number of days since the subject began experiencing sleep
+deprivation.  The data are clustered by subject, and since the data
+are collected by time, we use a first-order autoregressive working
 correlation model.
 
-```jldoctest
+```jldoctest sleep
 julia> slp = dataset("lme4", "sleepstudy");
 
 julia> slp = sort(slp, :Subject);
@@ -53,12 +53,33 @@ julia> corparams(m.model)
 0.7670316895600818
 ```
 
-The results indicate that reaction times become around 10.4 units
+There are several approaches to estimating the covariance of the
+parameter estimates, the default is the robust sandwich approach.
+Other options are the "naive" approach, the "md" (Mancl-DeRouen)
+bias-reduced approach, and the "kc" (Kauermann-Carroll) bias-reduced
+approach.
+
+```jldoctest sleep
+julia> m = gee(@formula(Reaction ~ Days), slp, slp.Subject, Normal(), AR1Cor(), IdentityLink(), cov_type="md")
+StatsModels.TableRegressionModel{GeneralizedEstimatingEquationsModel{GEE.GEEResp{Float64},GEE.DensePred{Float64}},Array{Float64,2}}
+
+Reaction ~ 1 + Days
+
+Coefficients:
+────────────────────────────────────────────────────────────────────────
+                Coef.  Std. Error      z  Pr(>|z|)  Lower 95%  Upper 95%
+────────────────────────────────────────────────────────────────────────
+(Intercept)  253.489      6.73038  37.66    <1e-99  240.298      266.681
+Days          10.4668     1.52411   6.87    <1e-11    7.47956     13.454
+────────────────────────────────────────────────────────────────────────
+```
+
+The results indicate that reaction times become around 10.5 units
 slower for each additional day on the study, starting from a baseline
 mean value of around 253 units.  There are around 47.8 standard
 deviation units of unexplained variation, and the within-subject
-autocorrelation of the unexplained variation decays with a parameter
-of around 0.77.
+autocorrelation of the unexplained variation decays exponentially with
+a parameter of around 0.77.
 
 The next example uses data from a 1988 survey of contraception use
 among women in Bangladesh.  Contraception use may vary by district,

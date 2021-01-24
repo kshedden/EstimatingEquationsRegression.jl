@@ -136,6 +136,14 @@ end
     m0 = glm(X, y, Normal(), IdentityLink())
     @test isapprox(coef(m), coef(m0), atol=1e-5)
 
+    # Test Mancl-DeRouen bias-corrected covariance
+    md = [ 75.44856851 -62.63586341 -0.24877097 -2.98788492 -3.97999231;
+          -62.63586341  78.35721229  1.07935278  0.08063683  0.48629709;
+          -0.24877097    1.07935278 23.13671202 -0.82766056  0.65476088;
+          -2.98788492    0.08063683 -0.82766056 20.49462071  2.03460987;
+          -3.97999231    0.48629709  0.65476088  2.03460987 26.88039618] / 10000
+    @test isapprox(vcov(m1, cov_type="md"), md, atol=1e-5)
+
     # score test where the null hypothesis is false
     m = fit(GeneralizedEstimatingEquationsModel, X, y, g, Normal(), IndependenceCor(), IdentityLink(); dofit=false)
     subm = fit(GeneralizedEstimatingEquationsModel, X[:, 1:2], y, g, Normal(), IndependenceCor(), IdentityLink())
