@@ -4,7 +4,7 @@ using Distributions, LinearAlgebra, StatsBase
 using LinearAlgebra: BlasReal, diag
 using StatsBase: CoefTable, StatisticalModel, RegressionModel
 using GLM: Link, LinPredModel, LinPred, ModResp, linkfun, linkinv, glmvar, mueta
-using GLM: GeneralizedLinearModel, dispersion_parameter
+using GLM: GeneralizedLinearModel, dispersion_parameter, canonicallink
 
 import StatsBase: coef, coeftable, vcov, stderr, dof, dof_residual, fit
 

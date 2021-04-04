@@ -81,7 +81,7 @@ end
 
             mat = makeAR(0.4, d)
             vi = (sm \ (mat \ (sm \ v)))
-            vi2 = GEE.covsolve(c, sd, v)
+            vi2 = GEE.covsolve(c, sd, zeros(0), v)
             @test isapprox(vi, vi2)
 
         end
@@ -105,7 +105,7 @@ end
 
             mat = makeEx(0.4, d)
             vi = (sm \ (mat \ (sm \ v)))
-            vi2 = GEE.covsolve(c, sd, v)
+            vi2 = GEE.covsolve(c, sd, zeros(0), v)
             @test isapprox(vi, vi2)
 
         end
@@ -226,4 +226,33 @@ end
     @test isapprox(stderr(m), [0.081861, 0.082812, 0.060770, 0.050310, 0.043223], atol=1e-4)
     @test isapprox(dispersion(m), 1)
     @test isapprox(corparams(m), 0.255286, atol=1e-3)
+end
+
+@testset "weights" begin
+
+    X = randn(6, 2)
+    X[:, 1] .= 1
+    y = X[:, 1] + randn(6)
+    y[6] = y[5]
+    X[6, :] = X[5, :]
+
+    g = [1., 1, 1, 2, 2, 2]
+    m1 = fit(GeneralizedEstimatingEquationsModel, X, y, g, Normal())
+
+    wts = [1., 1, 1, 1, 1, 1]
+    m2 = fit(GeneralizedEstimatingEquationsModel, X, y, g, Normal(), wts=wts)
+
+    wts = [1., 1, 1, 1, 2]
+    X1 = X[1:5, :]
+    y1 = y[1:5]
+    g1 = g[1:5]
+    m3 = fit(GeneralizedEstimatingEquationsModel, X1, y1, g1, Normal(), wts=wts)
+
+    @test isapprox(coef(m1), coef(m2))
+    @test isapprox(coef(m1), coef(m3))
+    @test isapprox(stderr(m1), stderr(m2))
+    @test isapprox(stderr(m1), stderr(m3))
+    @test isapprox(dispersion(m1), dispersion(m2))
+    #@test isapprox(dispersion(m1), dispersion(m3))
+
 end

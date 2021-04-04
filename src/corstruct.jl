@@ -64,15 +64,23 @@ function updatecor(c::ExchangeableCor, sresid::FPVector, g::Array{Int,2})
 
 end
 
-function covsolve(c::IndependenceCor, sd::Array{T}, z::Array{T}) where {T<:Real}
-    return Diagonal(1 ./ sd .^ 2) * z
+function covsolve(c::IndependenceCor, sd::Array{T}, w::Array{T}, z::Array{T}) where {T<:Real}
+    if length(w) > 0
+        return Diagonal(w ./ sd .^ 2) * z
+    else
+        return Diagonal(1 ./ sd .^ 2) * z
+    end
 end
 
-function covsolve(c::ExchangeableCor, sd::Array{T}, z::Array{T}) where {T<:Real}
+function covsolve(c::ExchangeableCor, sd::Array{T}, w::Array{T}, z::Array{T}) where {T<:Real}
     a = c.aa
     p = length(sd)
     f = a / ((1 - a) * (1 + a * (p - 1)))
-    di = Diagonal(1 ./ sd)
+    if length(w) > 0
+        di = Diagonal(w ./ sd)
+    else
+        di = Diagonal(1 ./ sd)
+    end
     x = di * z
     u = x ./ (1 - a)
     if length(size(z)) == 1
@@ -83,11 +91,15 @@ function covsolve(c::ExchangeableCor, sd::Array{T}, z::Array{T}) where {T<:Real}
     di * u
 end
 
-function covsolve(c::AR1Cor, sd::Array{T}, z::Array{T}) where {T<:Real}
+function covsolve(c::AR1Cor, sd::Array{T}, w::Array{T}, z::Array{T}) where {T<:Real}
 
     r = c.aa[1]
     d = size(z, 1)
     q = length(size(z))
+
+    if length(w) > 0
+        z = Diagonal(w) * z
+    end
 
     if d == 1
         # 1x1 case
@@ -102,17 +114,17 @@ function covsolve(c::AR1Cor, sd::Array{T}, z::Array{T}) where {T<:Real}
         return z1
     else
         # General case
-	z1 = (z' ./ sd')'
+        z1 = (z' ./ sd')'
 
         c0 = (1.0 + r^2) / (1.0 - r^2)
         c1 = 1.0 / (1.0 - r^2)
         c2 = -r / (1.0 - r^2)
 
-	y = c0 * z1
-	y[1:end-1, :] .= y[1:end-1, :] + c2 * z1[2:end, :]
+        y = c0 * z1
+        y[1:end-1, :] .= y[1:end-1, :] + c2 * z1[2:end, :]
         y[2:end, :] .= y[2:end, :] + c2 * z1[1:end-1, :]
-	y[1, :] = c1*z1[1, :] + c2*z1[2, :]
-	y[end, :] = c1*z1[end, :] + c2*z1[end-1, :]
+        y[1, :] = c1*z1[1, :] + c2*z1[2, :]
+        y[end, :] = c1*z1[end, :] + c2*z1[end-1, :]
 
         y = (y' ./ sd')'
 

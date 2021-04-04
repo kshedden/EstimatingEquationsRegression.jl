@@ -14,7 +14,7 @@ struct GEEResp{T<:Real} <: ModResp
     "`grp`: group labels, cases for each group must be stored consecutively."
     grp::Array{Int,2}
 
-    "`wts`: weights"
+    "`wts`: case weights"
     wts::Array{T,1}
 
     "`η`: the linear predictor"
@@ -40,6 +40,7 @@ struct GEEResp{T<:Real} <: ModResp
 
     "`offset`: offset is added to the linear predictor"
     offset::Array{T,1}
+
 end
 
 """
@@ -149,10 +150,11 @@ function _iterate(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, last::Bool) whe
     for j = 1:size(r.grp, 1)
         i1, i2 = r.grp[j, 1], r.grp[j, 2]
         updateD!(p, r.dμdη[i1:i2], i1, i2)
-        r.viresid[i1:i2] .= covsolve(q.cor, r.sd[i1:i2], r.resid[i1:i2])
+        w = length(r.wts) > 0 ? r.wts[i1:i2] : zeros(0)
+        r.viresid[i1:i2] .= covsolve(q.cor, r.sd[i1:i2], w, r.resid[i1:i2])
         p.score_obs .= p.D' * r.viresid[i1:i2]
         p.score .= p.score + p.score_obs
-        c.nacov .= c.nacov + p.D' * covsolve(q.cor, r.sd[i1:i2], p.D)
+        c.nacov .= c.nacov + p.D' * covsolve(q.cor, r.sd[i1:i2], w, p.D)
 
         if last
             # Only compute on final iteration
@@ -175,25 +177,26 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
 
         # Computation of common quantities
         i1, i2 = r.grp[j, 1], r.grp[j, 2]
+        w = length(r.wts) > 0 ? r.wts[i1:i2] : zeros(0)
         updateD!(p, r.dμdη[i1:i2], i1, i2)
-	vid = covsolve(q.cor, r.sd[i1:i2], p.D)
-	vid .= vid ./ di
-	h = p.D * c.nacov * vid'
-	m = i2 - i1 + 1
+        vid = covsolve(q.cor, r.sd[i1:i2], w, p.D)
+        vid .= vid ./ di
+        h = p.D * c.nacov * vid'
+        m = i2 - i1 + 1
 
-	# Mancl-DeRouen
-	ar = (I(m) - h) \ r.resid[i1:i2]
-	sr = covsolve(q.cor, r.sd[i1:i2], ar)
+        # Mancl-DeRouen
+        ar = (I(m) - h) \ r.resid[i1:i2]
+        sr = covsolve(q.cor, r.sd[i1:i2], w, ar)
         sr = p.D' * sr
         bcm_md .= bcm_md + sr * sr'
 
-	# Kauermann-Carroll
-	eval, evec = eigen(I(m) - h)
+        # Kauermann-Carroll
+        eval, evec = eigen(I(m) - h)
         eval .= (eval + abs.(eval)) ./ 2
-	eval2 = 1 ./ sqrt.(eval)
+        eval2 = 1 ./ sqrt.(eval)
         eval2[eval .== 0] .= 0
-	ar = evec * diagm(eval2) * evec' * r.resid[i1:i2]
-	sr = covsolve(q.cor, r.sd[i1:i2], real(ar))
+        ar = evec * diagm(eval2) * evec' * r.resid[i1:i2]
+        sr = covsolve(q.cor, r.sd[i1:i2], w, real(ar))
         sr = p.D' * sr
         bcm_kc .= bcm_kc + sr * sr'
 
@@ -277,7 +280,13 @@ Corstruct(m::GeneralizedEstimatingEquationsModel{G,L}) where {G,L} = m.qq.cor
 function dispersion(m::AbstractGEE)
     r = m.rr.sresid
     if dispersion_parameter(m.qq.dist)
-        s = sum(i -> r[i]^2, eachindex(r)) / dof_residual(m)
+        if length(m.rr.wts) > 0
+            w = m.rr.wts
+            d = sum(w) - size(m.pp.X, 2)
+            s = sum(i -> w[i]*r[i]^2, eachindex(r)) / d
+        else
+            s = sum(i -> r[i]^2, eachindex(r)) / dof_residual(m)
+        end
     else
         one(eltype(r))
     end
@@ -383,7 +392,7 @@ function fit(
     y::AbstractVector{<:Real},
     g::AbstractVector,
     d::UnivariateDistribution,
-    c::CorStruct,
+    c::CorStruct = IndependenceCor(),
     l::Link = canonicallink(d);
     cov_type::String = "robust",
     dofit::Bool = true,
