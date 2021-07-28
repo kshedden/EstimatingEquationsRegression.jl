@@ -189,7 +189,7 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
 		if minimum(abs, eval) < 1e-8
 			nfail += 1
 			continue
-		end 
+		end
 
         # Kauermann-Carroll
         eval .= (eval + abs.(eval)) ./ 2
@@ -250,10 +250,8 @@ function _fit!(
     for iter = 1:maxiter
         _iterprep(pp, rr, qq)
         updatecor(cor, sresid, g)
-        println(cor)
         _iterate(pp, rr, qq, cc, last)
         updateβ!(pp, score, nacov)
-		println(score)
 
         if last
             break
@@ -322,7 +320,7 @@ function groupix(g::AbstractVector)
     push!(ii, b, length(g))
     mx = length(g) - b + 1 > mx ? length(g) - b + 1 : mx
     ii = reshape(ii, 2, div(length(ii), 2))
-    
+
     return tuple(ii, mx)
 end
 
@@ -343,7 +341,7 @@ function vcov(m::AbstractGEE; cov_type::String = "")
     end
 end
 
-function stderror(m::AbstractGEE; cov_type = "robust")
+function stderror(m::AbstractGEE; cov_type::String = "robust")::Array{Float64,1}
     return sqrt.(diag(vcov(m; cov_type = cov_type)))
 end
 
@@ -400,10 +398,10 @@ function fit(
     ::Type{M},
     X::Matrix{T},
     y::AbstractVector{<:AbstractFloat},
-    g::AbstractVector;
+    g::AbstractVector,
     d::UnivariateDistribution = Normal(),
     c::CorStruct = IndependenceCor(),
-    l::Link = canonicallink(d),
+    l::Link = canonicallink(d);
     cov_type::String = "robust",
     dofit::Bool = true,
     wts::AbstractVector{<:Real} = similar(y, 0),
@@ -434,7 +432,7 @@ fit(
     X::Matrix,
     y::AbstractVector,
     g::AbstractVector,
-    d::UnivariateDistribution,
+    d::UnivariateDistribution = Normal(),
     c::CorStruct = IndependenceCor(),
     l::Link = canonicallink(d); kwargs...) where {M<:AbstractGEE} =
         fit(M, float(X), float(y), g, d, c, l; kwargs...)
