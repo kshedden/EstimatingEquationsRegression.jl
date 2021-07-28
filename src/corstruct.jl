@@ -23,8 +23,8 @@ function updatecor(c::AR1Cor, sresid::FPVector, g::Array{Int,2})
     aa, sp = 0.0, 0.0
     ma, ms = 0, 0
 
-    for i = 1:size(g, 1)
-        i1, i2 = g[i, 1], g[i, 2]
+    for i = 1:size(g, 2)
+        i1, i2 = g[1, i], g[2, i]
         for j1 = i1:i2
             sp += sresid[j1]^2
             if j1 < i2
@@ -44,23 +44,23 @@ function updatecor(c::IndependenceCor, sresid::FPVector, g::Array{Int,2}) end
 
 function updatecor(c::ExchangeableCor, sresid::FPVector, g::Array{Int,2})
 
-    aa, sp = 0.0, 0.0
-    ma, ms = 0, 0
+    sxp, ssr = 0.0, 0.0
+    nxp, n = 0, 0
 
-    for i = 1:size(g, 1)
-        i1, i2 = g[i, 1], g[i, 2]
+    for i = 1:size(g, 2)
+        i1, i2 = g[1, i], g[2, i]
         for j1 = i1:i2
-            sp += sresid[j1]^2
+            ssr += sresid[j1]^2
             for j2 = j1+1:i2
-                aa += sresid[j1] * sresid[j2]
+                sxp += sresid[j1] * sresid[j2]
             end
         end
         q = i2 - i1 + 1
-        ms += q
-        ma += q * (q - 1) / 2
+        n += q
+        nxp += q * (q - 1) / 2
     end
 
-    c.aa = (aa / ma) / (sp / ms)
+    c.aa = (sxp / nxp) / (ssr / n)
 
 end
 

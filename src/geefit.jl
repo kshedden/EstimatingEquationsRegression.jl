@@ -11,7 +11,7 @@ struct GEEResp{T<:Real} <: ModResp
     "`y`: response vector"
     y::Array{T,1}
 
-    "`grp`: group labels, cases for each group must be stored consecutively."
+    "`grp`: group positions, each column contains positions i1, i2 spanning one group"
     grp::Array{Int,2}
 
     "`wts`: case weights"
@@ -20,8 +20,8 @@ struct GEEResp{T<:Real} <: ModResp
     "`η`: the linear predictor"
     η::Array{T,1}
 
-    "`μ`: the mean"
-    μ::Array{T,1}
+    "`mu`: the mean, use `mu` instead of `μ` for compatibility with GLM"
+    mu::Array{T,1}
 
     "`resid`: residuals"
     resid::Array{T,1}
@@ -132,9 +132,9 @@ end
 # Preliminary calculations for one iteration of GEE fitting.
 function _iterprep(p::LinPred, r::GEEResp, q::GEEprop)
     updateη!(p, r.η, r.offset)
-    r.μ .= linkinv.(q.link, r.η)
-    r.resid .= r.y .- r.μ
-    r.sd .= glmvar.(q.dist, r.μ)
+    r.mu .= linkinv.(q.link, r.η)
+    r.resid .= r.y .- r.mu
+    r.sd .= glmvar.(q.dist, r.mu)
     r.sd .= sqrt.(r.sd)
     r.sresid .= r.resid ./ r.sd
     r.dμdη .= mueta.(q.link, r.η)
@@ -147,8 +147,8 @@ function _iterate(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, last::Bool) whe
     if last
         c.scrcov .= 0
     end
-    for j = 1:size(r.grp, 1)
-        i1, i2 = r.grp[j, 1], r.grp[j, 2]
+    for j = 1:size(r.grp, 2)
+        i1, i2 = r.grp[1, j], r.grp[2, j]
         updateD!(p, r.dμdη[i1:i2], i1, i2)
         w = length(r.wts) > 0 ? r.wts[i1:i2] : zeros(0)
         r.viresid[i1:i2] .= covsolve(q.cor, r.sd[i1:i2], w, r.resid[i1:i2])
@@ -167,16 +167,17 @@ end
 # parameter covariance matrices.  This must run after the parameter
 # fitting because it requires the naive covariance matrix and scale
 # parameter estimates.
-function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
+function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)::Int
 
     m = size(p.X, 2)
     bcm_md = zeros(m, m)
     bcm_kc = zeros(m, m)
+	nfail = 0
 
-    for j = 1:size(r.grp, 1)
+    for j = 1:size(r.grp, 2)
 
         # Computation of common quantities
-        i1, i2 = r.grp[j, 1], r.grp[j, 2]
+        i1, i2 = r.grp[1, j], r.grp[2, j]
         w = length(r.wts) > 0 ? r.wts[i1:i2] : zeros(0)
         updateD!(p, r.dμdη[i1:i2], i1, i2)
         vid = covsolve(q.cor, r.sd[i1:i2], w, p.D)
@@ -184,14 +185,13 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
         h = p.D * c.nacov * vid'
         m = i2 - i1 + 1
 
-        # Mancl-DeRouen
-        ar = (I(m) - h) \ r.resid[i1:i2]
-        sr = covsolve(q.cor, r.sd[i1:i2], w, ar)
-        sr = p.D' * sr
-        bcm_md .= bcm_md + sr * sr'
+        eval, evec = eigen(I(m) - h)
+		if minimum(abs, eval) < 1e-8
+			nfail += 1
+			continue
+		end 
 
         # Kauermann-Carroll
-        eval, evec = eigen(I(m) - h)
         eval .= (eval + abs.(eval)) ./ 2
         eval2 = 1 ./ sqrt.(eval)
         eval2[eval .== 0] .= 0
@@ -200,12 +200,20 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
         sr = p.D' * sr
         bcm_kc .= bcm_kc + sr * sr'
 
+        # Mancl-DeRouen
+        ar = (I(m) - h) \ r.resid[i1:i2]
+        sr = covsolve(q.cor, r.sd[i1:i2], w, ar)
+        sr = p.D' * sr
+        bcm_md .= bcm_md + sr * sr'
+
    end
 
    bcm_md .= bcm_md ./ di^2
    bcm_kc .= bcm_kc ./ di^2
    c.mdcov .= c.nacov * bcm_md * c.nacov
    c.kccov .= c.nacov * bcm_kc * c.nacov
+
+	return nfail
 
 end
 
@@ -222,7 +230,7 @@ function _fit!(
     m.fit && return m
 
     pp, rr, qq, cc = m.pp, m.rr, m.qq, m.cc
-    y, g, η, μ, sd, dμdη = rr.y, rr.grp, rr.η, rr.μ, rr.sd, rr.dμdη
+    y, g, η, μ, sd, dμdη = rr.y, rr.grp, rr.η, rr.mu, rr.sd, rr.dμdη
     viresid, resid, sresid = rr.viresid, rr.resid, rr.sresid
     link, dist, cor = qq.link, qq.dist, qq.cor
     score = pp.score
@@ -242,8 +250,10 @@ function _fit!(
     for iter = 1:maxiter
         _iterprep(pp, rr, qq)
         updatecor(cor, sresid, g)
+        println(cor)
         _iterate(pp, rr, qq, cc, last)
         updateβ!(pp, score, nacov)
+		println(score)
 
         if last
             break
@@ -263,7 +273,10 @@ function _fit!(
 
     # Update the bias-corrected parameter covariances
     di = dispersion(m)
-    _update_bc!(pp, rr, qq, cc, di)
+    nfail = _update_bc!(pp, rr, qq, cc, di)
+	if nfail > 0
+		@warn "Failures in $(nfail) groups when computing bias-corrected standard errors"
+	end
 
     # Set the default covariance
     cc.cov = vcov(m, cov_type=qq.cov_type)
@@ -293,27 +306,24 @@ function dispersion(m::AbstractGEE)
 end
 
 
-# Return an m x 2 array, each row of which contains the indices
+# Return a 2 x m array, each column of which contains the indices
 # spanning one group; also return the size of the largest group.
 function groupix(g::AbstractVector)
 
-    ii = []
-
-    b = 1
-    mx = 0
+    ii = Int[]
+    b, mx = 1, 0
     for i = 2:length(g)
         if g[i] != g[i-1]
-            append!(ii, [b, i - 1])
+            push!(ii, b, i - 1)
             mx = i - b > mx ? i - b : mx
             b = i
         end
     end
-    append!(ii, [b, length(g)])
+    push!(ii, b, length(g))
     mx = length(g) - b + 1 > mx ? length(g) - b + 1 : mx
-
-    ii = reshape(ii, 2, length(ii) ÷ 2)
-    (Array{Int,2}(transpose(ii)), mx)
-
+    ii = reshape(ii, 2, div(length(ii), 2))
+    
+    return tuple(ii, mx)
 end
 
 function vcov(m::AbstractGEE; cov_type::String = "")
@@ -389,11 +399,11 @@ same length as the number of columns in the model matrix.
 function fit(
     ::Type{M},
     X::Matrix{T},
-    y::AbstractVector{<:Real},
-    g::AbstractVector,
-    d::UnivariateDistribution,
+    y::AbstractVector{<:AbstractFloat},
+    g::AbstractVector;
+    d::UnivariateDistribution = Normal(),
     c::CorStruct = IndependenceCor(),
-    l::Link = canonicallink(d);
+    l::Link = canonicallink(d),
     cov_type::String = "robust",
     dofit::Bool = true,
     wts::AbstractVector{<:Real} = similar(y, 0),
@@ -405,6 +415,10 @@ function fit(
         throw(DimensionMismatch("Number of rows in X, y and g must match"))
     end
 
+	if !issorted(g)
+        error("Group vector is not sorted")
+	end
+
     (gi, mg) = groupix(g)
     rr = GEEResp(y, gi, wts, offset)
     p = size(X, 2)
@@ -413,6 +427,18 @@ function fit(
     return dofit ? fit!(res, fitargs...) : res
 
 end
+
+# This implementation of fit is called when numeric type conversions are needed.
+fit(
+    ::Type{M},
+    X::Matrix,
+    y::AbstractVector,
+    g::AbstractVector,
+    d::UnivariateDistribution,
+    c::CorStruct = IndependenceCor(),
+    l::Link = canonicallink(d); kwargs...) where {M<:AbstractGEE} =
+        fit(M, float(X), float(y), g, d, c, l; kwargs...)
+
 
 """
     gee(F, D, args...; kwargs...)
