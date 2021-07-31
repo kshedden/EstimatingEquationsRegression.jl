@@ -60,13 +60,18 @@ struct GEEprop{D<:UnivariateDistribution,L<:Link,R<:CorStruct}
     "`cor`: the working correlation structure"
     cor::R
 
+    "`ddof`: adjustment to the denominator degrees of freedom for estimating 
+     the scale parameter, this value is subtracted from the sample size to
+     obtain the degrees of freedom."
+    ddof::Int
+
     "`cov_type`: the type of parameter covariance (default is robust)"
     cov_type::String
 
 end
 
-function GEEprop(dist, link, cor; cov_type="robust")
-    GEEprop(dist, link, cor, cov_type)
+function GEEprop(dist, link, cor, ddof; cov_type = "robust")
+    GEEprop(dist, link, cor, ddof, cov_type)
 end
 
 """
@@ -172,7 +177,7 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
     m = size(p.X, 2)
     bcm_md = zeros(m, m)
     bcm_kc = zeros(m, m)
-	nfail = 0
+    nfail = 0
 
     for j = 1:size(r.grp, 2)
 
@@ -186,15 +191,15 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
         m = i2 - i1 + 1
 
         eval, evec = eigen(I(m) - h)
-		if minimum(abs, eval) < 1e-8
-			nfail += 1
-			continue
-		end
+        if minimum(abs, eval) < 1e-8
+            nfail += 1
+            continue
+        end
 
         # Kauermann-Carroll
         eval .= (eval + abs.(eval)) ./ 2
         eval2 = 1 ./ sqrt.(eval)
-        eval2[eval .== 0] .= 0
+        eval2[eval.==0] .= 0
         ar = evec * diagm(eval2) * evec' * r.resid[i1:i2]
         sr = covsolve(q.cor, r.sd[i1:i2], w, real(ar))
         sr = p.D' * sr
@@ -206,14 +211,14 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
         sr = p.D' * sr
         bcm_md .= bcm_md + sr * sr'
 
-   end
+    end
 
-   bcm_md .= bcm_md ./ di^2
-   bcm_kc .= bcm_kc ./ di^2
-   c.mdcov .= c.nacov * bcm_md * c.nacov
-   c.kccov .= c.nacov * bcm_kc * c.nacov
+    bcm_md .= bcm_md ./ di^2
+    bcm_kc .= bcm_kc ./ di^2
+    c.mdcov .= c.nacov * bcm_md * c.nacov
+    c.kccov .= c.nacov * bcm_kc * c.nacov
 
-	return nfail
+    return nfail
 
 end
 
@@ -225,6 +230,8 @@ function _fit!(
     atol::Real,
     rtol::Real,
     start,
+    fitcoef::Bool,
+    fitcor::Bool,
 )
 
     m.fit && return m
@@ -232,32 +239,38 @@ function _fit!(
     pp, rr, qq, cc = m.pp, m.rr, m.qq, m.cc
     y, g, η, μ, sd, dμdη = rr.y, rr.grp, rr.η, rr.mu, rr.sd, rr.dμdη
     viresid, resid, sresid = rr.viresid, rr.resid, rr.sresid
-    link, dist, cor = qq.link, qq.dist, qq.cor
+    link, dist, cor, ddof = qq.link, qq.dist, qq.cor, qq.ddof
     score = pp.score
     scrcov, nacov = cc.scrcov, cc.nacov
 
+    # GEE update of coef is not needed in this case
+    independence = typeof(cor) <: IndependenceCor && isnothing(start)
+
     if isnothing(start)
-        gm = StatsBase.fit(GeneralizedLinearModel, pp.X, y, dist, link)
+        gm = StatsBase.fit(GeneralizedLinearModel, pp.X, y, dist, link; wts = m.rr.wts)
         start = coef(gm)
     end
 
     pp.beta0 = start
 
     n, p = size(pp.X)
-    last = false
-    cvg = false
+    last = false || !fitcoef || independence
+    cvg = false || !fitcoef || independence
 
     for iter = 1:maxiter
         _iterprep(pp, rr, qq)
-        updatecor(cor, sresid, g)
+        fitcor && updatecor(cor, sresid, g, ddof)
         _iterate(pp, rr, qq, cc, last)
+
+        fitcoef || break
+
         updateβ!(pp, score, nacov)
 
         if last
             break
         end
         nrm = norm(pp.delbeta)
-        verbose && println("Iteration $iter, step $nrm")
+        verbose && println("Iteration $iter, step norm=$nrm")
         cvg = nrm < atol
         last = (iter == maxiter - 1) || cvg
 
@@ -272,12 +285,12 @@ function _fit!(
     # Update the bias-corrected parameter covariances
     di = dispersion(m)
     nfail = _update_bc!(pp, rr, qq, cc, di)
-	if nfail > 0
-		@warn "Failures in $(nfail) groups when computing bias-corrected standard errors"
-	end
+    if nfail > 0
+        @warn "Failures in $(nfail) groups when computing bias-corrected standard errors"
+    end
 
     # Set the default covariance
-    cc.cov = vcov(m, cov_type=qq.cov_type)
+    cc.cov = vcov(m, cov_type = qq.cov_type)
 
     m
 
@@ -294,7 +307,7 @@ function dispersion(m::AbstractGEE)
         if length(m.rr.wts) > 0
             w = m.rr.wts
             d = sum(w) - size(m.pp.X, 2)
-            s = sum(i -> w[i]*r[i]^2, eachindex(r)) / d
+            s = sum(i -> w[i] * r[i]^2, eachindex(r)) / d
         else
             s = sum(i -> r[i]^2, eachindex(r)) / dof_residual(m)
         end
@@ -307,6 +320,10 @@ end
 # Return a 2 x m array, each column of which contains the indices
 # spanning one group; also return the size of the largest group.
 function groupix(g::AbstractVector)
+
+    if !issorted(g)
+        error("Group vector is not sorted")
+    end
 
     ii = Int[]
     b, mx = 1, 0
@@ -393,6 +410,11 @@ length 0
 `β` is less than `max(rtol*dev, atol)`.
 - `start::AbstractVector=nothing`: Starting values for beta. Should have the
 same length as the number of columns in the model matrix.
+- `fitcoef::Bool=true`: If false, set the coefficients equal to the GLM coefficients 
+or to `start` if provided, and update the correlation parameters and dispersion without
+using GEE iterations to update the coefficients.`
+- `fitcor::Bool=true`: If false, hold the correlation parameters equal to their starting
+values.``
 """
 function fit(
     ::Type{M},
@@ -406,6 +428,7 @@ function fit(
     dofit::Bool = true,
     wts::AbstractVector{<:Real} = similar(y, 0),
     offset::AbstractVector{<:Real} = similar(y, 0),
+    ddof_scale::Union{Int,Nothing} = nothing,
     fitargs...,
 ) where {M<:AbstractGEE,T<:FP}
 
@@ -413,16 +436,13 @@ function fit(
         throw(DimensionMismatch("Number of rows in X, y and g must match"))
     end
 
-	if !issorted(g)
-        error("Group vector is not sorted")
-	end
-
     (gi, mg) = groupix(g)
     rr = GEEResp(y, gi, wts, offset)
     p = size(X, 2)
-    res = M(rr, DensePred(X, mg), GEEprop(d, l, c, cov_type), GEECov(p), false)
+    ddof = isnothing(ddof_scale) ? p : ddof_scale
+    res = M(rr, DensePred(X, mg), GEEprop(d, l, c, ddof; cov_type), GEECov(p), false)
 
-    return dofit ? fit!(res, fitargs...) : res
+    return dofit ? fit!(res; fitargs...) : res
 
 end
 
@@ -434,8 +454,9 @@ fit(
     g::AbstractVector,
     d::UnivariateDistribution = Normal(),
     c::CorStruct = IndependenceCor(),
-    l::Link = canonicallink(d); kwargs...) where {M<:AbstractGEE} =
-        fit(M, float(X), float(y), g, d, c, l; kwargs...)
+    l::Link = canonicallink(d);
+    kwargs...,
+) where {M<:AbstractGEE} = fit(M, float(X), float(y), g, d, c, l; kwargs...)
 
 
 """
@@ -455,10 +476,11 @@ function StatsBase.fit!(
     atol::Real = 1e-6,
     rtol::Real = 1e-6,
     start = nothing,
+    fitcoef::Bool = true,
+    fitcor::Bool = true,
     kwargs...,
 )
-
-    _fit!(m, verbose, maxiter, atol, rtol, start)
+    _fit!(m, verbose, maxiter, atol, rtol, start, fitcoef, fitcor)
 end
 
 """

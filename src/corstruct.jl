@@ -18,34 +18,37 @@ function AR1Cor()
     AR1Cor(0.0)
 end
 
-function updatecor(c::AR1Cor, sresid::FPVector, g::Array{Int,2})
+function updatecor(c::AR1Cor, sresid::FPVector, g::Array{Int,2}, ddof::Int)
 
-    aa, sp = 0.0, 0.0
-    ma, ms = 0, 0
-
+    lag0, lag1 = 0.0, 0.0
     for i = 1:size(g, 2)
         i1, i2 = g[1, i], g[2, i]
+        q = i2 - i1 + 1 # group size
+        if q < 2
+            continue
+        end
+        s0, s1 = 0.0, 0.0
         for j1 = i1:i2
-            sp += sresid[j1]^2
+            s0 += sresid[j1]^2
             if j1 < i2
-                aa += sresid[j1] * sresid[j1+1]
+                s1 += sresid[j1] * sresid[j1+1]
             end
         end
-        q = i2 - i1 + 1
-        ms += q
-        ma += q - 1
+        lag0 += s0 / q
+        lag1 += s1 / (q - 1)
     end
 
-    c.aa = (aa / ma) / (sp / ms)
+    c.aa = lag1 / lag0
 
 end
 
-function updatecor(c::IndependenceCor, sresid::FPVector, g::Array{Int,2}) end
+# Nothing to do for independence model.
+function updatecor(c::IndependenceCor, sresid::FPVector, g::Array{Int,2}, ddof::Int) end
 
-function updatecor(c::ExchangeableCor, sresid::FPVector, g::Array{Int,2})
+function updatecor(c::ExchangeableCor, sresid::FPVector, g::Array{Int,2}, ddof::Int)
 
     sxp, ssr = 0.0, 0.0
-    nxp, n = 0, 0
+    npr, n = 0, 0
 
     for i = 1:size(g, 2)
         i1, i2 = g[1, i], g[2, i]
@@ -55,16 +58,23 @@ function updatecor(c::ExchangeableCor, sresid::FPVector, g::Array{Int,2})
                 sxp += sresid[j1] * sresid[j2]
             end
         end
-        q = i2 - i1 + 1
+        q = i2 - i1 + 1 # group size
         n += q
-        nxp += q * (q - 1) / 2
+        npr += q * (q - 1) / 2
     end
 
-    c.aa = (sxp / nxp) / (ssr / n)
+    scale = ssr / (n - ddof)
+    sxp /= scale
+    c.aa = sxp / (npr - ddof)
 
 end
 
-function covsolve(c::IndependenceCor, sd::Array{T}, w::Array{T}, z::Array{T}) where {T<:Real}
+function covsolve(
+    c::IndependenceCor,
+    sd::Array{T},
+    w::Array{T},
+    z::Array{T},
+) where {T<:Real}
     if length(w) > 0
         return Diagonal(w ./ sd .^ 2) * z
     else
@@ -72,7 +82,12 @@ function covsolve(c::IndependenceCor, sd::Array{T}, w::Array{T}, z::Array{T}) wh
     end
 end
 
-function covsolve(c::ExchangeableCor, sd::Array{T}, w::Array{T}, z::Array{T}) where {T<:Real}
+function covsolve(
+    c::ExchangeableCor,
+    sd::Array{T},
+    w::Array{T},
+    z::Array{T},
+) where {T<:Real}
     a = c.aa
     p = length(sd)
     f = a / ((1 - a) * (1 + a * (p - 1)))
@@ -103,13 +118,13 @@ function covsolve(c::AR1Cor, sd::Array{T}, w::Array{T}, z::Array{T}) where {T<:R
 
     if d == 1
         # 1x1 case
-        return z ./ sd.^2
+        return z ./ sd .^ 2
     elseif d == 2
         # 2x2 case
         sp = sd[1] * sd[2]
         z1 = zeros(size(z))
-        z1[1, :] .= z[1, :]/sd[1]^2 - r*z[2, :]/sp
-        z1[2, :] .= -r*z[1, :]/sp + z[2, :]/sd[2]^2
+        z1[1, :] .= z[1, :] / sd[1]^2 - r * z[2, :] / sp
+        z1[2, :] .= -r * z[1, :] / sp + z[2, :] / sd[2]^2
         z1 .= z1 ./ (1 - r^2)
         return z1
     else
@@ -123,8 +138,8 @@ function covsolve(c::AR1Cor, sd::Array{T}, w::Array{T}, z::Array{T}) where {T<:R
         y = c0 * z1
         y[1:end-1, :] .= y[1:end-1, :] + c2 * z1[2:end, :]
         y[2:end, :] .= y[2:end, :] + c2 * z1[1:end-1, :]
-        y[1, :] = c1*z1[1, :] + c2*z1[2, :]
-        y[end, :] = c1*z1[end, :] + c2*z1[end-1, :]
+        y[1, :] = c1 * z1[1, :] + c2 * z1[2, :]
+        y[end, :] = c1 * z1[end, :] + c2 * z1[end-1, :]
 
         y = (y' ./ sd')'
 
