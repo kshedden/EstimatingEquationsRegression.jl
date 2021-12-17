@@ -105,12 +105,19 @@ function GEECov(p::Int)
     GEECov(zeros(p, p), zeros(p, p), zeros(p, p), zeros(p, p), zeros(p, p), zeros(p, p))
 end
 
+"""
+    GeneralizedEstimatingEquationsModel <: AbstractGEE
+
+Type representing a GLM to be fit using generalized estimating
+equations (GEE).
+"""
 mutable struct GeneralizedEstimatingEquationsModel{G<:GEEResp,L<:LinPred} <: AbstractGEE
     rr::G
     pp::L
     qq::GEEprop
     cc::GEECov
     fit::Bool
+    converged::Bool
 end
 
 function GEEResp(
@@ -156,10 +163,10 @@ function _iterate(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, last::Bool) whe
         i1, i2 = r.grp[1, j], r.grp[2, j]
         updateD!(p, r.dμdη[i1:i2], i1, i2)
         w = length(r.wts) > 0 ? r.wts[i1:i2] : zeros(0)
-        r.viresid[i1:i2] .= covsolve(q.cor, r.sd[i1:i2], w, r.resid[i1:i2])
+        r.viresid[i1:i2] .= covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], w, r.resid[i1:i2])
         p.score_obs .= p.D' * r.viresid[i1:i2]
         p.score .= p.score + p.score_obs
-        c.nacov .= c.nacov + p.D' * covsolve(q.cor, r.sd[i1:i2], w, p.D)
+        c.nacov .= c.nacov + p.D' * covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], w, p.D)
 
         if last
             # Only compute on final iteration
@@ -185,11 +192,14 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
         i1, i2 = r.grp[1, j], r.grp[2, j]
         w = length(r.wts) > 0 ? r.wts[i1:i2] : zeros(0)
         updateD!(p, r.dμdη[i1:i2], i1, i2)
-        vid = covsolve(q.cor, r.sd[i1:i2], w, p.D)
+        vid = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], w, p.D)
         vid .= vid ./ di
-        h = p.D * c.nacov * vid'
-        m = i2 - i1 + 1
 
+        # This is m x m, where m is the group size.
+        # It could be large.
+        h = p.D * c.nacov * vid'
+
+        m = i2 - i1 + 1
         eval, evec = eigen(I(m) - h)
         if minimum(abs, eval) < 1e-8
             nfail += 1
@@ -201,13 +211,13 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
         eval2 = 1 ./ sqrt.(eval)
         eval2[eval.==0] .= 0
         ar = evec * diagm(eval2) * evec' * r.resid[i1:i2]
-        sr = covsolve(q.cor, r.sd[i1:i2], w, real(ar))
+        sr = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], w, real(ar))
         sr = p.D' * sr
         bcm_kc .= bcm_kc + sr * sr'
 
         # Mancl-DeRouen
         ar = (I(m) - h) \ r.resid[i1:i2]
-        sr = covsolve(q.cor, r.sd[i1:i2], w, ar)
+        sr = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], w, ar)
         sr = p.D' * sr
         bcm_md .= bcm_md + sr * sr'
 
@@ -232,6 +242,7 @@ function _fit!(
     start,
     fitcoef::Bool,
     fitcor::Bool,
+    bccor::Bool,
 )
 
     m.fit && return m
@@ -278,21 +289,29 @@ function _fit!(
 
     m.cc.rcov = nacov \ scrcov / nacov
     m.cc.nacov = inv(nacov) .* dispersion(m)
+    if cvg
+        m.converged = true
+    else
+        @warn "Warning: GEE failed to converge."
+    end
 
-    cvg || throw(ConvergenceException(maxiter))
+    # The model has been fit
     m.fit = true
 
     # Update the bias-corrected parameter covariances
     di = dispersion(m)
-    nfail = _update_bc!(pp, rr, qq, cc, di)
-    if nfail > 0
-        @warn "Failures in $(nfail) groups when computing bias-corrected standard errors"
+
+    if bccor
+        nfail = _update_bc!(pp, rr, qq, cc, di)
+        if nfail > 0
+            @warn "Failures in $(nfail) groups when computing bias-corrected standard errors"
+        end
     end
 
     # Set the default covariance
     cc.cov = vcov(m, cov_type = qq.cov_type)
 
-    m
+    return m
 
 end
 
@@ -440,7 +459,7 @@ function fit(
     rr = GEEResp(y, gi, wts, offset)
     p = size(X, 2)
     ddof = isnothing(ddof_scale) ? p : ddof_scale
-    res = M(rr, DensePred(X, mg), GEEprop(d, l, c, ddof; cov_type), GEECov(p), false)
+    res = M(rr, DensePred(X, mg), GEEprop(d, l, c, ddof; cov_type), GEECov(p), false, false)
 
     return dofit ? fit!(res; fitargs...) : res
 
@@ -478,9 +497,10 @@ function StatsBase.fit!(
     start = nothing,
     fitcoef::Bool = true,
     fitcor::Bool = true,
+    bccor::Bool = true,
     kwargs...,
 )
-    _fit!(m, verbose, maxiter, atol, rtol, start, fitcoef, fitcor)
+    _fit!(m, verbose, maxiter, atol, rtol, start, fitcoef, fitcor, bccor)
 end
 
 """

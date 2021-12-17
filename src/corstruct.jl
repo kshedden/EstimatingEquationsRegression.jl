@@ -1,7 +1,21 @@
 abstract type CorStruct end
 
+"""
+    IndependenceCor <: CorStruct
+
+Type that represents a GEE working correlation structure in which the
+observations within a group are modeled as being independent.
+"""
 struct IndependenceCor <: CorStruct end
 
+"""
+    ExchangeableCor <: CorStruct
+
+Type that represents a GEE working correlation structure in which the
+observations within a group are modeled as exchangeably correlated.
+Any two observations in a group have the same correlation between
+them, which can be estimated from the data.
+"""
 mutable struct ExchangeableCor <: CorStruct
     aa::Float64
 end
@@ -10,12 +24,37 @@ function ExchangeableCor()
     ExchangeableCor(0.0)
 end
 
+"""
+    AR1Cor <: CorStruct
+
+Type that represents a GEE working correlation structure in which the
+observations within a group are modeled as being serially correlated
+according to their order in the dataset, with the correlation between
+two observations that are j positions apart being `r^j` for a real
+parameter `r` that can be estimated from the data.
+"""
 mutable struct AR1Cor <: CorStruct
     aa::Float64
 end
 
 function AR1Cor()
     AR1Cor(0.0)
+end
+
+"""
+    OrdinalIndependenceCor <: CorStruct
+
+Type that represents a GEE working correlation structure in which the
+ordinal observations within a group are modeled as being independent.
+Each ordinal observation is converted to a set of binary indicators,
+and the indicators derived from a common ordinal value are modeled as
+correlated, with the correlations determined from the marginal means.
+"""
+mutable struct OrdinalIndependenceCor <: CorStruct
+
+    # The number of binary indicators derived from each
+    # observed ordinal variable.
+    numind::Int
 end
 
 function updatecor(c::AR1Cor, sresid::FPVector, g::Array{Int,2}, ddof::Int)
@@ -44,6 +83,7 @@ end
 
 # Nothing to do for independence model.
 function updatecor(c::IndependenceCor, sresid::FPVector, g::Array{Int,2}, ddof::Int) end
+function updatecor(c::OrdinalIndependenceCor, sresid::FPVector, g::Array{Int,2}, ddof::Int) end
 
 function updatecor(c::ExchangeableCor, sresid::FPVector, g::Array{Int,2}, ddof::Int)
 
@@ -71,19 +111,47 @@ end
 
 function covsolve(
     c::IndependenceCor,
+    mu::Array{T},
     sd::Array{T},
     w::Array{T},
     z::Array{T},
 ) where {T<:Real}
     if length(w) > 0
-        return Diagonal(w ./ sd .^ 2) * z
+        return w .* z ./ sd .^ 2
     else
-        return Diagonal(1 ./ sd .^ 2) * z
+        return z ./ sd .^ 2
     end
 end
 
 function covsolve(
+    c::OrdinalIndependenceCor,
+    mu::Array{T},
+    sd::Array{T},
+    w::Array{T},
+    z::Array{T},
+) where {T<:Real}
+
+    p = length(mu)
+    numind = c.numind
+    @assert p % numind == 0
+    q = div(p, numind)
+    ma = zeros(p, p)
+    ii = 0
+    for k = 1:q
+        for i = 1:numind
+            for j = 1:numind
+                ma[ii+i, ii+j] = min(mu[ii+i], mu[ii+j]) - mu[ii+i] * mu[ii+j]
+            end
+        end
+        ii += numind
+    end
+
+    return ma \ z
+end
+
+function covsolve(
     c::ExchangeableCor,
+    mu::Array{T},
     sd::Array{T},
     w::Array{T},
     z::Array{T},
@@ -106,7 +174,13 @@ function covsolve(
     di * u
 end
 
-function covsolve(c::AR1Cor, sd::Array{T}, w::Array{T}, z::Array{T}) where {T<:Real}
+function covsolve(
+    c::AR1Cor,
+    mu::Array{T},
+    sd::Array{T},
+    w::Array{T},
+    z::Array{T},
+) where {T<:Real}
 
     r = c.aa[1]
     d = size(z, 1)
@@ -149,6 +223,8 @@ function covsolve(c::AR1Cor, sd::Array{T}, w::Array{T}, z::Array{T}) where {T<:R
 end
 
 function corparams(c::IndependenceCor) end
+
+function corparams(c::OrdinalIndependenceCor) end
 
 function corparams(c::ExchangeableCor)
     return c.aa

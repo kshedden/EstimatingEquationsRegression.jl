@@ -9,7 +9,8 @@ using GLM: GeneralizedLinearModel, dispersion_parameter, canonicallink
 import StatsBase: coef, coeftable, vcov, stderr, dof, dof_residual, fit
 
 export fit, fit!, GeneralizedEstimatingEquationsModel, vcov, stderr, coef
-export CorStruct, IndependenceCor, ExchangeableCor, AR1Cor, corparams, dispersion, dof
+export CorStruct, IndependenceCor, ExchangeableCor, OrdinalIndependenceCor, AR1Cor
+export corparams, dispersion, dof
 export scoretest, modelmatrix, gee
 
 const FP = AbstractFloat

@@ -29,7 +29,7 @@ end
 
 function save()
     y, z, X, g = data1()
-    da = DataFrame(X, :auto)
+    da = DataFrame(X)
     da[:, :y] = y
     da[:, :z] = z
     da[:, :g] = g
@@ -101,11 +101,12 @@ end
             c = AR1Cor(0.4)
             v = q == 1 ? randn(d) : randn(d, q)
             sd = rand(d)
+            mu = rand(d)
             sm = Diagonal(sd)
 
             mat = makeAR(0.4, d)
             vi = (sm \ (mat \ (sm \ v)))
-            vi2 = GEE.covsolve(c, sd, zeros(0), v)
+            vi2 = GEE.covsolve(c, mu, sd, zeros(0), v)
             @test isapprox(vi, vi2)
 
         end
@@ -124,17 +125,35 @@ end
 
             c = ExchangeableCor(0.4)
             v = q == 1 ? randn(d) : randn(d, q)
+            mu = rand(d)
             sd = rand(d)
             sm = Diagonal(sd)
 
             mat = makeEx(0.4, d)
             vi = (sm \ (mat \ (sm \ v)))
-            vi2 = GEE.covsolve(c, sd, zeros(0), v)
+            vi2 = GEE.covsolve(c, mu, sd, zeros(0), v)
             @test isapprox(vi, vi2)
         end
     end
 end
 
+@testset "OrdinalIndependence covsolve" begin
+
+    Random.seed!(123)
+
+    c = OrdinalIndependenceCor(2)
+
+    mu = [0.2, 0.3, 0.4, 0.5]
+    sd = mu .* (1 .- mu)
+    rhs = Array{Float64}(I(4))
+
+    rslt = GEE.covsolve(c, mu, sd, zeros(0), rhs)
+    rslt = inv(rslt)
+    @test isapprox(rslt[1:2, 3:4], zeros(2, 2))
+    @test isapprox(rslt, rslt')
+    @test isapprox(diag(rslt), mu .* (1 .- mu))
+
+end
 
 @testset "linear/normal independence model" begin
 
@@ -154,7 +173,7 @@ end
     @test isapprox(dispersion(m), 0.673, atol = 1e-4)
 
     # Check fitting using formula/dataframe
-    df = DataFrame(X, :auto)
+    df = DataFrame(X)
     df[!, :g] = g
     df[!, :y] = y
     f = @formula(y ~ 0 + x1 + x2 + x3)
