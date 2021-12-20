@@ -1,6 +1,6 @@
 module GEE
 
-using Distributions, LinearAlgebra, StatsBase
+using Distributions, LinearAlgebra, StatsBase, DataFrames
 using LinearAlgebra: BlasReal, diag
 using StatsBase: CoefTable, StatisticalModel, RegressionModel
 using GLM: Link, LinPredModel, LinPred, ModResp, linkfun, linkinv, glmvar, mueta
