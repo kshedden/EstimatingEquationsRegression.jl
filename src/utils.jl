@@ -20,7 +20,7 @@ create each binary indicator is placed into the variable named
 function expand_ordinal(
     df,
     response::Symbol;
-    response_recoded::Union{Symbol,nothing} = nothing,
+    response_recoded::Union{Symbol,Nothing} = nothing,
     var_id::Symbol = :var_id,
     level_var::Symbol = :level_var,
 )

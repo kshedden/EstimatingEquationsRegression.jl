@@ -20,4 +20,5 @@ include("corstruct.jl")
 include("linpred.jl")
 include("geefit.jl")
 include("scoretest.jl")
+include("utils.jl")
 end
