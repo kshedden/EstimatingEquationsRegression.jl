@@ -27,13 +27,6 @@ function _score_transforms(model::AbstractGEE, submodel::AbstractGEE)
     (qm, qc)
 end
 
-
-mutable struct ScoreTestResult
-    dof::Int
-    stat::Float64
-    pvalue::Float64
-end
-
 """
     scoretest(model::AbstractGEE, submodel::AbstractGEE)
 
@@ -88,5 +81,5 @@ function scoretest(model::AbstractGEE, submodel::AbstractGEE)
     dof = length(score2)
     pvalue = 1 - cdf(Chisq(dof), stat)
 
-    ScoreTestResult(dof, stat, pvalue)
+    return (DoF = dof, Stat = stat, Pvalue = pvalue)
 end

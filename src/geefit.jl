@@ -258,7 +258,17 @@ function _fit!(
     independence = typeof(cor) <: IndependenceCor && isnothing(start)
 
     if isnothing(start)
-        gm = StatsBase.fit(GeneralizedLinearModel, pp.X, y, dist, link; wts = m.rr.wts)
+        # The default maxiter for GLM seems to be too small
+        maxit = min(maxiter, 100)
+        gm = StatsBase.fit(
+            GeneralizedLinearModel,
+            pp.X,
+            y,
+            dist,
+            link;
+            wts = m.rr.wts,
+            maxiter = maxit,
+        )
         start = coef(gm)
     end
 
@@ -378,7 +388,13 @@ function vcov(m::AbstractGEE; cov_type::String = "")
 end
 
 function stderror(m::AbstractGEE; cov_type::String = "robust")::Array{Float64,1}
-    return sqrt.(diag(vcov(m; cov_type = cov_type)))
+    v = diag(vcov(m; cov_type = cov_type))
+    ii = findall((v .>= -1e-10) .& (v .<= 0))
+    if length(ii) > 0
+        v[ii] .= 0
+        @warn "Estimated parameter covariance matrix is not positive definite"
+    end
+    return sqrt.(v)
 end
 
 function coeftable(mm::AbstractGEE; level::Real = 0.95, cov_type::String = "")
