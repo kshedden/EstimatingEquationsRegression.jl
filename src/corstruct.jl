@@ -111,10 +111,10 @@ end
 
 function covsolve(
     c::IndependenceCor,
-    mu::Array{T},
-    sd::Array{T},
-    w::Array{T},
-    z::Array{T},
+    mu::AbstractVector{T},
+    sd::AbstractVector{T},
+    w::AbstractVector{T},
+    z::AbstractArray{T},
 ) where {T<:Real}
     if length(w) > 0
         return w .* z ./ sd .^ 2

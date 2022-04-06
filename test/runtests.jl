@@ -5,6 +5,8 @@ using GEE
 using GLM: IdentityLink, LogLink, LogitLink, glm
 using Random
 
+include("runtests_geee.jl")
+
 function data1()
     X = [
         3.0 3 2

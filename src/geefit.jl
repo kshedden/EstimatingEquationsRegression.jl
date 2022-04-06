@@ -1,3 +1,5 @@
+using Printf
+
 abstract type AbstractGEE <: LinPredModel end
 
 """
@@ -9,38 +11,37 @@ the response.  Vectors here are all n-dimensional.
 struct GEEResp{T<:Real} <: ModResp
 
     "`y`: response vector"
-    y::Array{T,1}
+    y::Vector{T}
 
     "`grp`: group positions, each column contains positions i1, i2 spanning one group"
-    grp::Array{Int,2}
+    grp::Matrix{Int}
 
     "`wts`: case weights"
-    wts::Array{T,1}
+    wts::Vector{T}
 
     "`η`: the linear predictor"
-    η::Array{T,1}
+    η::Vector{T}
 
     "`mu`: the mean, use `mu` instead of `μ` for compatibility with GLM"
-    mu::Array{T,1}
+    mu::Vector{T}
 
     "`resid`: residuals"
-    resid::Array{T,1}
+    resid::Vector{T}
 
     "`sresid`: standardized (Pearson) residuals"
-    sresid::Array{T,1}
+    sresid::Vector{T}
 
     "`sd`: the standard deviation of the observations"
-    sd::Array{T,1}
+    sd::Vector{T}
 
     "`dμdη`: derivative of mean with respect to linear predictor"
-    dμdη::Array{T,1}
+    dμdη::Vector{T}
 
     "`viresid`: whitened residuals"
-    viresid::Array{T,1}
+    viresid::Vector{T}
 
     "`offset`: offset is added to the linear predictor"
-    offset::Array{T,1}
-
+    offset::Vector{T}
 end
 
 """
@@ -67,7 +68,6 @@ struct GEEprop{D<:UnivariateDistribution,L<:Link,R<:CorStruct}
 
     "`cov_type`: the type of parameter covariance (default is robust)"
     cov_type::String
-
 end
 
 function GEEprop(dist, link, cor, ddof; cov_type = "robust")
@@ -121,10 +121,10 @@ mutable struct GeneralizedEstimatingEquationsModel{G<:GEEResp,L<:LinPred} <: Abs
 end
 
 function GEEResp(
-    y::Array{T,1},
-    g::Array{Int,2},
-    wts::Array{T,1},
-    off::Array{T,1},
+    y::Vector{T},
+    g::Matrix{Int},
+    wts::Vector{T},
+    off::Vector{T},
 ) where {T<:Real}
     return GEEResp{T}(
         y,
@@ -213,14 +213,13 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
         ar = evec * diagm(eval2) * evec' * r.resid[i1:i2]
         sr = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], w, real(ar))
         sr = p.D' * sr
-        bcm_kc .= bcm_kc + sr * sr'
+        bcm_kc .+= sr * sr'
 
         # Mancl-DeRouen
         ar = (I(m) - h) \ r.resid[i1:i2]
         sr = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], w, ar)
         sr = p.D' * sr
-        bcm_md .= bcm_md + sr * sr'
-
+        bcm_md .+= sr * sr'
     end
 
     bcm_md .= bcm_md ./ di^2
@@ -229,7 +228,6 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
     c.kccov .= c.nacov * bcm_kc * c.nacov
 
     return nfail
-
 end
 
 
@@ -244,7 +242,6 @@ function _fit!(
     fitcor::Bool,
     bccor::Bool,
 )
-
     m.fit && return m
 
     pp, rr, qq, cc = m.pp, m.rr, m.qq, m.cc
@@ -322,7 +319,6 @@ function _fit!(
     cc.cov = vcov(m, cov_type = qq.cov_type)
 
     return m
-
 end
 
 Distributions.Distribution(q::GEEprop) = q.dist
@@ -344,7 +340,6 @@ function dispersion(m::AbstractGEE)
         one(eltype(r))
     end
 end
-
 
 # Return a 2 x m array, each column of which contains the indices
 # spanning one group; also return the size of the largest group.
@@ -383,6 +378,7 @@ function vcov(m::AbstractGEE; cov_type::String = "")
     elseif cov_type == "kc"
         return m.cc.kccov
     else
+        warning("Unknown cov_type '$(cov_type)'")
         return nothing
     end
 end
@@ -452,9 +448,9 @@ using GEE iterations to update the coefficients.`
 values.``
 """
 function fit(
-    ::Type{M},
-    X::Matrix{T},
-    y::AbstractVector{<:AbstractFloat},
+    ::Type{GeneralizedEstimatingEquationsModel},
+    X::AbstractMatrix,
+    y::AbstractVector,
     g::AbstractVector,
     d::UnivariateDistribution = Normal(),
     c::CorStruct = IndependenceCor(),
@@ -465,34 +461,46 @@ function fit(
     offset::AbstractVector{<:Real} = similar(y, 0),
     ddof_scale::Union{Int,Nothing} = nothing,
     fitargs...,
-) where {M<:AbstractGEE,T<:FP}
-
-    if !(size(X, 1) == size(y, 1) == size(g, 1))
-        throw(DimensionMismatch("Number of rows in X, y and g must match"))
+)
+    if !(size(X, 1) == length(y) == length(g))
+        m = @sprintf(
+            "Number of rows in X (%d), y (%d), and g (%d) must match",
+            size(X, 1),
+            length(y),
+            length(g)
+        )
+        throw(DimensionMismatch(m))
     end
+
+    # Ensure that X, y, wts, and offset have the same type
+    tl = [typeof(first(X)), typeof(first(y))]
+    if length(wts) > 0
+        push!(tl, typeof(first(wts)))
+    end
+    if length(offset) > 0
+        push!(tl, typeof(first(offset)))
+    end
+    t = promote_type(tl...)
+    X = t.(X)
+    y = t.(y)
+    wts = t.(wts)
+    offset = t.(offset)
 
     (gi, mg) = groupix(g)
     rr = GEEResp(y, gi, wts, offset)
     p = size(X, 2)
     ddof = isnothing(ddof_scale) ? p : ddof_scale
-    res = M(rr, DensePred(X, mg), GEEprop(d, l, c, ddof; cov_type), GEECov(p), false, false)
+    res = GeneralizedEstimatingEquationsModel(
+        rr,
+        DensePred(X, mg),
+        GEEprop(d, l, c, ddof; cov_type),
+        GEECov(p),
+        false,
+        false,
+    )
 
     return dofit ? fit!(res; fitargs...) : res
-
 end
-
-# This implementation of fit is called when numeric type conversions are needed.
-fit(
-    ::Type{M},
-    X::Matrix,
-    y::AbstractVector,
-    g::AbstractVector,
-    d::UnivariateDistribution = Normal(),
-    c::CorStruct = IndependenceCor(),
-    l::Link = canonicallink(d);
-    kwargs...,
-) where {M<:AbstractGEE} = fit(M, float(X), float(y), g, d, c, l; kwargs...)
-
 
 """
     gee(F, D, args...; kwargs...)
