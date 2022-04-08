@@ -12,7 +12,7 @@ import StatsBase: coef, coeftable, vcov, stderr, dof, dof_residual, fit
 export fit, fit!, GeneralizedEstimatingEquationsModel, vcov, stderr, coef
 export CorStruct, IndependenceCor, ExchangeableCor, OrdinalIndependenceCor, AR1Cor
 export corparams, dispersion, dof, scoretest, modelmatrix, gee
-export expand_ordinal, GEEE, geee
+export expand_ordinal, GEEE, geee, coefnames
 
 const FP = AbstractFloat
 const FPVector{T<:FP} = AbstractArray{T,1}

@@ -231,8 +231,8 @@ function set_vcov!(geee::GEEE)
         # Update D0
         jj = 0
         for j in eachindex(geee.tau)
-            check_resid_mul!(@view(resid[jj+1:jj+p]), geee.tau[j])
-            jj += p
+            check_resid_mul!(@view(resid[jj+1:jj+gs]), geee.tau[j])
+            jj += gs
         end
         v = xw' * (va \ resid)
         D0 .+= v * v'
@@ -308,8 +308,18 @@ function StatsBase.vcov(m::GEEE)
     return m.vcov
 end
 
+function StatsBase.coefnames(m::StatsModels.TableRegressionModel{GEEE{T},Matrix{T}}) where T
+	return repeat(coefnames(m.mf), length(m.model.tau))	
+end
+
+function StatsBase.coeftable(m::StatsModels.TableRegressionModel{GEEE{T},Matrix{T}}) where T
+	ct = coeftable(m.model)
+	ct.rownms = coefnames(m)
+	return ct
+end
+
 function coeftable(mm::GEEE; level::Real = 0.95)
-    cc = vec(mm.beta)
+    cc = coef(mm)
     se = sqrt.(diag(mm.vcov))
     zz = cc ./ se
     p = 2 * ccdf.(Ref(Normal()), abs.(zz))
@@ -318,11 +328,12 @@ function coeftable(mm::GEEE; level::Real = 0.95)
     na = ["x$i" for i = 1:size(mm.X, 1)]
     q = length(mm.tau)
     na = repeat(na, q)
+    tau = kron(mm.tau, ones(size(mm.X, 1)))
     CoefTable(
-        hcat(cc, se, zz, p, cc + ci, cc - ci),
-        ["Coef.", "Std. Error", "z", "Pr(>|z|)", "Lower $levstr%", "Upper $levstr%"],
+        hcat(tau, cc, se, zz, p, cc + ci, cc - ci),
+        ["tau", "Coef.", "Std. Error", "z", "Pr(>|z|)", "Lower $levstr%", "Upper $levstr%"],
         na,
+        5,
         4,
-        3,
     )
 end

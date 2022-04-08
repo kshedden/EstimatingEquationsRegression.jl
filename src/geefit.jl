@@ -365,7 +365,7 @@ function groupix(g::AbstractVector)
     return tuple(ii, mx)
 end
 
-function vcov(m::AbstractGEE; cov_type::String = "")
+function StatsBase.vcov(m::AbstractGEE; cov_type::String = "")
     if cov_type == ""
         # Default covariance
         return m.cc.cov
@@ -383,7 +383,7 @@ function vcov(m::AbstractGEE; cov_type::String = "")
     end
 end
 
-function stderror(m::AbstractGEE; cov_type::String = "robust")::Array{Float64,1}
+function StatsBase.stderror(m::AbstractGEE; cov_type::String = "robust")::Array{Float64,1}
     v = diag(vcov(m; cov_type = cov_type))
     ii = findall((v .>= -1e-10) .& (v .<= 0))
     if length(ii) > 0
@@ -393,7 +393,7 @@ function stderror(m::AbstractGEE; cov_type::String = "robust")::Array{Float64,1}
     return sqrt.(v)
 end
 
-function coeftable(mm::AbstractGEE; level::Real = 0.95, cov_type::String = "")
+function StatsBase.coeftable(mm::GeneralizedEstimatingEquationsModel; level::Real = 0.95, cov_type::String = "")
     cov_type = (cov_type == "") ? mm.qq.cov_type : cov_type
     cc = coef(mm)
     se = stderror(mm; cov_type = cov_type)
