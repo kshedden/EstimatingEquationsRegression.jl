@@ -8,6 +8,8 @@ observations within a group are modeled as being independent.
 """
 struct IndependenceCor <: CorStruct end
 
+Base.copy(c::IndependenceCor) = IndependenceCor()
+
 """
     ExchangeableCor <: CorStruct
 
@@ -19,6 +21,8 @@ them, which can be estimated from the data.
 mutable struct ExchangeableCor <: CorStruct
     aa::Float64
 end
+
+Base.copy(c::ExchangeableCor) = ExchangeableCor(c.aa)
 
 function ExchangeableCor()
     ExchangeableCor(0.0)
@@ -57,7 +61,7 @@ mutable struct OrdinalIndependenceCor <: CorStruct
     numind::Int
 end
 
-function updatecor(c::AR1Cor, sresid::FPVector, g::Array{Int,2}, ddof::Int)
+function updatecor(c::AR1Cor, sresid::FPVector, g::Matrix{Int}, ddof::Int)
 
     lag0, lag1 = 0.0, 0.0
     for i = 1:size(g, 2)
@@ -82,10 +86,10 @@ function updatecor(c::AR1Cor, sresid::FPVector, g::Array{Int,2}, ddof::Int)
 end
 
 # Nothing to do for independence model.
-function updatecor(c::IndependenceCor, sresid::FPVector, g::Array{Int,2}, ddof::Int) end
-function updatecor(c::OrdinalIndependenceCor, sresid::FPVector, g::Array{Int,2}, ddof::Int) end
+function updatecor(c::IndependenceCor, sresid::FPVector, g::Matrix{Int}, ddof::Int) end
+function updatecor(c::OrdinalIndependenceCor, sresid::FPVector, g::Matrix{Int}, ddof::Int) end
 
-function updatecor(c::ExchangeableCor, sresid::FPVector, g::Array{Int,2}, ddof::Int)
+function updatecor(c::ExchangeableCor, sresid::FPVector, g::Matrix{Int}, ddof::Int)
 
     sxp, ssr = 0.0, 0.0
     npr, n = 0, 0
@@ -125,10 +129,10 @@ end
 
 function covsolve(
     c::OrdinalIndependenceCor,
-    mu::Array{T},
-    sd::Array{T},
-    w::Array{T},
-    z::Array{T},
+    mu::AbstractVector{T},
+    sd::AbstractVector{T},
+    w::AbstractVector{T},
+    z::AbstractArray{T},
 ) where {T<:Real}
 
     p = length(mu)
@@ -151,10 +155,10 @@ end
 
 function covsolve(
     c::ExchangeableCor,
-    mu::Array{T},
-    sd::Array{T},
-    w::Array{T},
-    z::Array{T},
+    mu::AbstractVector{T},
+    sd::AbstractVector{T},
+    w::AbstractVector{T},
+    z::AbstractArray{T},
 ) where {T<:Real}
     a = c.aa
     p = length(sd)
@@ -176,10 +180,10 @@ end
 
 function covsolve(
     c::AR1Cor,
-    mu::Array{T},
-    sd::Array{T},
-    w::Array{T},
-    z::Array{T},
+    mu::AbstractVector{T},
+    sd::AbstractVector{T},
+    w::AbstractVector{T},
+    z::AbstractArray{T},
 ) where {T<:Real}
 
     r = c.aa[1]

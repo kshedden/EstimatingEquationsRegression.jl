@@ -13,8 +13,8 @@ struct GEEResp{T<:Real} <: ModResp
     "`y`: response vector"
     y::Vector{T}
 
-    "`grp`: group positions, each column contains positions i1, i2 spanning one group"
-    grp::Matrix{Int}
+    "`grpix`: group positions, each column contains positions i1, i2 spanning one group"
+    grpix::Matrix{Int}
 
     "`wts`: case weights"
     wts::Vector{T}
@@ -159,8 +159,8 @@ function _iterate(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, last::Bool) whe
     if last
         c.scrcov .= 0
     end
-    for j = 1:size(r.grp, 2)
-        i1, i2 = r.grp[1, j], r.grp[2, j]
+
+    for (g, (i1, i2)) in enumerate(eachcol(r.grpix))
         updateD!(p, r.dμdη[i1:i2], i1, i2)
         w = length(r.wts) > 0 ? r.wts[i1:i2] : zeros(0)
         r.viresid[i1:i2] .= covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], w, r.resid[i1:i2])
@@ -186,10 +186,9 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
     bcm_kc = zeros(m, m)
     nfail = 0
 
-    for j = 1:size(r.grp, 2)
+    for (g, (i1, i2)) in enumerate(eachcol(r.grpix))
 
         # Computation of common quantities
-        i1, i2 = r.grp[1, j], r.grp[2, j]
         w = length(r.wts) > 0 ? r.wts[i1:i2] : zeros(0)
         updateD!(p, r.dμdη[i1:i2], i1, i2)
         vid = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], w, p.D)
@@ -244,12 +243,11 @@ function _fit!(
 )
     m.fit && return m
 
-    pp, rr, qq, cc = m.pp, m.rr, m.qq, m.cc
-    y, g, η, μ, sd, dμdη = rr.y, rr.grp, rr.η, rr.mu, rr.sd, rr.dμdη
-    viresid, resid, sresid = rr.viresid, rr.resid, rr.sresid
-    link, dist, cor, ddof = qq.link, qq.dist, qq.cor, qq.ddof
+	(; pp, rr, qq, cc) = m
+	(; y, grpix, η, mu, sd, dμdη, viresid, resid, sresid) = rr
+    (; link, dist, cor, ddof) = qq
+    (; scrcov, nacov) = cc
     score = pp.score
-    scrcov, nacov = cc.scrcov, cc.nacov
 
     # GEE update of coef is not needed in this case
     independence = typeof(cor) <: IndependenceCor && isnothing(start)
@@ -277,7 +275,7 @@ function _fit!(
 
     for iter = 1:maxiter
         _iterprep(pp, rr, qq)
-        fitcor && updatecor(cor, sresid, g, ddof)
+        fitcor && updatecor(cor, sresid, grpix, ddof)
         _iterate(pp, rr, qq, cc, last)
 
         fitcoef || break
@@ -291,7 +289,6 @@ function _fit!(
         verbose && println("Iteration $iter, step norm=$nrm")
         cvg = nrm < atol
         last = (iter == maxiter - 1) || cvg
-
     end
 
     m.cc.rcov = nacov \ scrcov / nacov

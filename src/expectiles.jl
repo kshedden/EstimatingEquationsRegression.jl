@@ -1,4 +1,4 @@
-using LinearAlgebra
+using LinearAlgebra, BlockDiagonals
 
 mutable struct GEEE{T<:Real} <: AbstractGEE
 
@@ -24,7 +24,7 @@ mutable struct GEEE{T<:Real} <: AbstractGEE
     beta::Matrix{Float64}
 
     # The working correlation model
-    corstr::CorStruct
+    cor::Vector{CorStruct}
 
     # Map conditional mean to conditional variance
     varfunc::Function
@@ -41,11 +41,10 @@ function GEEE(
     X,
     grp,
     tau;
-    corstr = IndependenceCor(),
+    cor = CorStruct[IndependenceCor() for _ in eachindex(tau)],
     varfunc = nothing,
     tau_wt = nothing,
 )
-
     @assert length(y) == size(X, 2) == length(grp)
 
     if !issorted(grp)
@@ -74,19 +73,19 @@ function GEEE(
     # The variance/covariance matrix of all parameters
     vcov = zeros(p * q, p * q)
 
-    return GEEE(y, X, grp, gi, tau, tau_wt, beta, corstr, varfunc, vcov, mx)
+    return GEEE(y, X, grp, gi, tau, tau_wt, beta, cor, varfunc, vcov, mx)
 end
 
 # Place the linear predictor for the j^th tau value and
 # for group g into linpred.
-function linpred!(geee::GEEE, tauj::Int, g::Int, linpred::AbstractVector{Float64})
+function linpred!(geee::GEEE, tauj::Int, g::Int, linpred::T) where T<:AbstractVector
     i1, i2 = geee.grpix[:, g]
     x = geee.X[:, i1:i2]
     linpred .= x' * geee.beta[:, tauj]
 end
 
 # Multiply the residuals in-place by their own check function.
-function check_resid_mul!(resid::AbstractVector{T}, tau) where {T<:Real}
+function check_resid_mul!(resid::AbstractVector{S}, tau::T) where {S,T<:Real}
     for j in eachindex(resid)
         if resid[j] < 0
             resid[j] *= 1 - tau
@@ -97,25 +96,48 @@ function check_resid_mul!(resid::AbstractVector{T}, tau) where {T<:Real}
 end
 
 # Place the score for the jth expectile into 'scr'.
-function score!(geee::GEEE, j::Int, scr::Vector{T}) where {T<:Real}
+function score!(geee::GEEE, j::Int, scr::Vector{T}, denom::Matrix{T}, linpred::Vector{T}, resid::Vector{T}) where {T<:Real}
 
     scr .= 0
-    linpred0 = zeros(geee.mxgrp)
-    resid0 = zeros(geee.mxgrp)
-    p = size(geee.X, 1)
+	denom .= 0
+    p, n = size(geee.X)
     grpix = geee.grpix
+
+	# Backing storage
+	cresid = zeros(geee.mxgrp)
 
     # Loop over the groups
     for (g, (i1, i2)) in enumerate(eachcol(grpix))
+
+    	# Group size
         gs = i2 - i1 + 1
-        linpred = @view linpred0[1:gs]
-        resid = @view resid0[1:gs]
+
+        # Update the linear predictor and residuals
+        linpred1 = @view linpred[i1:i2]
+        resid1 = @view resid[i1:i2]
+        cresid1 = @view cresid[1:gs]
+        linpred!(geee, j, g, linpred1)
+        resid1 .= geee.y[i1:i2] - linpred1
+
+		# The checked residuals
+		cresid1 .= resid1
+        check!(cresid1, geee.tau[j])
+
+        # The product of the checked residuals and the residuals
+        check_resid_mul!(resid1, geee.tau[j])
+
+        # The conditional standard deviations of the observations
+        sd = sqrt.(geee.varfunc.(linpred1))
+
+        # Update the score function
         x = @view geee.X[:, i1:i2]
-        linpred!(geee, j, g, linpred)
-        resid .= geee.y[i1:i2] - linpred
-        check_resid_mul!(resid, geee.tau[j])
-        sd = sqrt.(geee.varfunc.(linpred))
-        scr .+= x * covsolve(geee.corstr, linpred, sd, zeros(0), resid)
+        scr .+= x * covsolve(geee.cor[j], linpred1, sd, zeros(0), resid1)
+
+        # The conditional standard deviations of the observations
+        sd = sqrt.(geee.varfunc.(linpred1))
+
+        # Update the denominator for the parameter update
+        denom .+= x * diagm(covsolve(geee.cor[j], linpred1, sd, zeros(0), cresid1)) * x'
     end
 end
 
@@ -130,46 +152,27 @@ function check!(v::AbstractVector{T}, tau::Float64) where {T<:Real}
     end
 end
 
-# Calculate the denominator matrix used in the fitting iterations.
-function denom!(geee::GEEE, j::Int, denom::Matrix{T}) where {T<:Real}
-    p = size(geee.X, 1)
-    tau = geee.tau[j]
-    linpred0 = zeros(geee.mxgrp)
-    resid0 = zeros(geee.mxgrp)
-    grpix = geee.grpix
-
-    # Loop over the groups to build up the denominator matrix
-    for (g, (i1, i2)) in enumerate(eachcol(grpix))
-        i1, i2 = grpix[:, g]
-        gs = i2 - i1 + 1
-        linpred = @view linpred0[1:gs]
-        resid = @view resid0[1:gs]
-        x = @view geee.X[:, i1:i2]
-        linpred!(geee, j, g, linpred)
-        resid .= geee.y[i1:i2] - linpred
-        check!(resid, tau)
-        sd = sqrt.(geee.varfunc.(linpred))
-        denom .+= x * covsolve(geee.corstr, linpred, sd, zeros(0), diagm(resid)) * x'
-    end
-end
-
 # Update the parameter estimates for the j^th expectile.
 function update!(geee::GEEE, j::Int)::Float64
-    p = size(geee.X, 1)
+    p, n = size(geee.X)
     score = zeros(p)
     denom = zeros(p, p)
-    denom!(geee, j, denom)
-    score!(geee, j, score)
+    linpred = zeros(n)
+    resid = zeros(n)
+    score!(geee, j, score, denom, linpred, resid)
     step = denom \ score
     geee.beta[:, j] .+= step
+    sresid = resid ./ sqrt.(geee.varfunc.(linpred))
+    updatecor(geee.cor[j], sresid, geee.grpix, p)
     return norm(step)
 end
 
 # Estimate the coefficients for the j^th expectile.
-function fit_tau!(geee::GEEE, j::Int; maxiter = 100)
+function fit_tau!(geee::GEEE, j::Int; maxiter::Int = 100, tol::Real = 1e-6)
+	p = size(geee.X, 1)
     for itr = 1:maxiter
         ss = update!(geee, j)
-        if ss < 1e-6
+        if ss < tol
             break
         end
     end
@@ -179,79 +182,75 @@ end
 function set_vcov!(geee::GEEE)
 
     # Number of covariates
-    p = size(geee.X, 1)
+    p, n = size(geee.X)
 
     # Number of expectiles being jointly estimated
     q = length(geee.tau)
 
     # Factors in the covariance matrix
-    D1 = zeros(p * q, p * q)
-    D0 = zeros(p * q, p * q)
+    D1 = [zeros(p, p) for _ in eachindex(geee.tau)]
+    D0 = [zeros(p, p) for _ in eachindex(geee.tau)]
 
     # Get D1 and D0, factors of the covariance matrix
-    linpred0 = zeros(q * geee.mxgrp)
-    resid0 = zeros(q * geee.mxgrp)
-    cresid0 = zeros(q * geee.mxgrp)
-    va0 = zeros(q * geee.mxgrp, q * geee.mxgrp)
+    linpred0 = zeros(n, q)
+    resid0 = zeros(n, q)
+    cresid0 = zeros(n, q)
+    sd0 = zeros(n, q)
     for (g, (i1, i2)) in enumerate(eachcol(geee.grpix))
 
-        # Size of current group
-        gs = i2 - i1 + 1
-
-        # Get the checked residual vector for all tau values.
-        resid = @view resid0[1:q*gs]
-        cresid = @view cresid0[1:q*gs]
-        linpred = @view linpred0[1:q*gs]
-        va = @view va0[1:q*gs, 1:q*gs]
-        va .= 0
-        jj = 0
+        # Get the residual and checked residual vector for all tau values.
         for j in eachindex(geee.tau)
+	        resid = @view resid0[i1:i2, j]
+    	    cresid = @view cresid0[i1:i2, j]
+        	linpred = @view linpred0[i1:i2, j]
+        	sd = @view sd0[i1:i2, j]
 
-            # Get the residuals
-            linpred!(geee, j, g, @view(linpred[jj+1:jj+gs]))
-            resid[jj+1:jj+gs] .= geee.y[i1:i2] - linpred[jj+1:jj+gs]
+            # The residuals
+            linpred!(geee, j, g, linpred)
+            resid .= geee.y[i1:i2] - linpred
 
-            # Get the checked residuals
-            cresid[jj+1:jj+gs] .= resid[jj+1:jj+gs]
-            check!(@view(cresid[jj+1:jj+gs]), geee.tau[j])
+            # The checked residuals
+            cresid .= resid
+            check!(cresid, geee.tau[j])
 
-            # The working covariance matrix, currently independent.  There
-            # is no need to scale by sigma^2 since it would cancel out below.
-            va[jj+1:jj+gs, jj+1:jj+gs] .= diagm(geee.varfunc.(linpred[jj+1:jj+gs]))
+	        # The product of the checked residuals and the residuals
+    	    check_resid_mul!(resid, geee.tau[j])
 
-            jj += gs
+			# The conditional standard deviations
+            sd .= sqrt.(geee.varfunc.(linpred))
+
+	        # Update D1
+    	    x = geee.X[:, i1:i2]
+        	D1[j] .+= geee.tau_wt[j] * x * diagm(covsolve(geee.cor[j], linpred, sd, zeros(0), cresid)) * x'
+
+			# Update D0
+	        v = geee.tau_wt[j] * x * covsolve(geee.cor[j], linpred, sd, zeros(0), resid)
+    	    D0[j] .+= v * v'
         end
-
-        # Update D1
-        x = geee.X[:, i1:i2]
-        xw = kron(diagm(geee.tau_wt), x')
-        xi = kron(I(q), x')
-        D1 .+= xw' * (va \ diagm(cresid)) * xi
-
-        # Update D0
-        jj = 0
-        for j in eachindex(geee.tau)
-            check_resid_mul!(@view(resid[jj+1:jj+gs]), geee.tau[j])
-            jj += gs
-        end
-        v = xw' * (va \ resid)
-        D0 .+= v * v'
     end
 
-    # Total sample size
+    # Normalize the block for each expectile by the sample size
     n = length(geee.y)
-    D0 ./= n
-    D1 ./= n
+	for j in eachindex(geee.tau)
+	    D0[j] ./= n
+    	D1[j] ./= n
+	end
 
-    vcov = D1 \ D0 / D1
+    vcov = BlockDiagonal(D1) \ BlockDiagonal(D0) / BlockDiagonal(D1)
     vcov ./= n
     geee.vcov = vcov
 end
 
 function dispersion(geee::GEEE, tauj::Int)::Float64
+
+	# The dispersion parameter estimate
     sig2 = 0.0
+
+    # Backing storage
     resid_b = zeros(geee.mxgrp)
     linpred_b = zeros(geee.mxgrp)
+
+    # Loop over groups
     for (g, (i1, i2)) in enumerate(eachcol(geee.grpix))
         # Size of current group
         gs = i2 - i1 + 1
@@ -284,7 +283,7 @@ end
 
 function fit(
     ::Type{GEEE},
-    X::Matrix{T},
+    X::AbstractMatrix{T},
     y::AbstractVector{T},
     g::AbstractVector,
     tau::Vector{Float64},
@@ -293,7 +292,8 @@ function fit(
     fitargs...,
 ) where {T<:Real}
 
-    geee = GEEE(y, copy(X'), g, tau)
+	c = CorStruct[copy(c) for _ in eachindex(tau)]
+    geee = GEEE(y, copy(X'), g, tau; cor=c)
 
     return dofit ? fit!(geee) : geee
 end
