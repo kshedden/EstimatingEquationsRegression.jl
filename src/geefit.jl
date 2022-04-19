@@ -1,6 +1,6 @@
-using Printf
+using Printf, GLM
 
-abstract type AbstractGEE <: LinPredModel end
+abstract type AbstractGEE <: GLM.AbstractGLM end
 
 """
     GEEResp
@@ -200,7 +200,7 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
 
         m = i2 - i1 + 1
         eval, evec = eigen(I(m) - h)
-        if minimum(abs, eval) < 1e-8
+        if minimum(abs, eval) < 1e-14
             nfail += 1
             continue
         end
@@ -442,7 +442,9 @@ same length as the number of columns in the model matrix.
 or to `start` if provided, and update the correlation parameters and dispersion without
 using GEE iterations to update the coefficients.`
 - `fitcor::Bool=true`: If false, hold the correlation parameters equal to their starting
-values.``
+values.
+- `bccor::Bool=true`: If false, do not compute the Kauermann-Carroll and Mancel-DeRouen
+covariances.
 """
 function fit(
     ::Type{GeneralizedEstimatingEquationsModel},
@@ -532,3 +534,6 @@ Return the parameters that define the working correlation structure.
 function corparams(m::AbstractGEE)
     return corparams(m.qq.cor)
 end
+
+
+GLM.Link(m::GeneralizedEstimatingEquationsModel) = m.qq.link
