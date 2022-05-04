@@ -61,7 +61,7 @@ struct GEEprop{D<:UnivariateDistribution,L<:Link,R<:CorStruct}
     "`cor`: the working correlation structure"
     cor::R
 
-    "`ddof`: adjustment to the denominator degrees of freedom for estimating 
+    "`ddof`: adjustment to the denominator degrees of freedom for estimating
      the scale parameter, this value is subtracted from the sample size to
      obtain the degrees of freedom."
     ddof::Int
@@ -243,8 +243,8 @@ function _fit!(
 )
     m.fit && return m
 
-	(; pp, rr, qq, cc) = m
-	(; y, grpix, η, mu, sd, dμdη, viresid, resid, sresid) = rr
+    (; pp, rr, qq, cc) = m
+    (; y, grpix, η, mu, sd, dμdη, viresid, resid, sresid) = rr
     (; link, dist, cor, ddof) = qq
     (; scrcov, nacov) = cc
     score = pp.score
@@ -438,7 +438,7 @@ length 0
 `β` is less than `max(rtol*dev, atol)`.
 - `start::AbstractVector=nothing`: Starting values for beta. Should have the
 same length as the number of columns in the model matrix.
-- `fitcoef::Bool=true`: If false, set the coefficients equal to the GLM coefficients 
+- `fitcoef::Bool=true`: If false, set the coefficients equal to the GLM coefficients
 or to `start` if provided, and update the correlation parameters and dispersion without
 using GEE iterations to update the coefficients.`
 - `fitcor::Bool=true`: If false, hold the correlation parameters equal to their starting

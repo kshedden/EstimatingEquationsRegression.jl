@@ -99,17 +99,17 @@ end
 function score!(geee::GEEE, j::Int, scr::Vector{T}, denom::Matrix{T}, linpred::Vector{T}, resid::Vector{T}) where {T<:Real}
 
     scr .= 0
-	denom .= 0
+    denom .= 0
     p, n = size(geee.X)
     grpix = geee.grpix
 
-	# Backing storage
-	cresid = zeros(geee.mxgrp)
+    # Backing storage
+    cresid = zeros(geee.mxgrp)
 
     # Loop over the groups
     for (g, (i1, i2)) in enumerate(eachcol(grpix))
 
-    	# Group size
+        # Group size
         gs = i2 - i1 + 1
 
         # Update the linear predictor and residuals
@@ -119,8 +119,8 @@ function score!(geee::GEEE, j::Int, scr::Vector{T}, denom::Matrix{T}, linpred::V
         linpred!(geee, j, g, linpred1)
         resid1 .= geee.y[i1:i2] - linpred1
 
-		# The checked residuals
-		cresid1 .= resid1
+        # The checked residuals
+        cresid1 .= resid1
         check!(cresid1, geee.tau[j])
 
         # The product of the checked residuals and the residuals
@@ -169,7 +169,7 @@ end
 
 # Estimate the coefficients for the j^th expectile.
 function fit_tau!(geee::GEEE, j::Int; maxiter::Int = 100, tol::Real = 1e-6)
-	p = size(geee.X, 1)
+    p = size(geee.X, 1)
     for itr = 1:maxiter
         ss = update!(geee, j)
         if ss < tol
@@ -200,10 +200,10 @@ function set_vcov!(geee::GEEE)
 
         # Get the residual and checked residual vector for all tau values.
         for j in eachindex(geee.tau)
-	        resid = @view resid0[i1:i2, j]
-    	    cresid = @view cresid0[i1:i2, j]
-        	linpred = @view linpred0[i1:i2, j]
-        	sd = @view sd0[i1:i2, j]
+            resid = @view resid0[i1:i2, j]
+            cresid = @view cresid0[i1:i2, j]
+            linpred = @view linpred0[i1:i2, j]
+            sd = @view sd0[i1:i2, j]
 
             # The residuals
             linpred!(geee, j, g, linpred)
@@ -213,28 +213,28 @@ function set_vcov!(geee::GEEE)
             cresid .= resid
             check!(cresid, geee.tau[j])
 
-	        # The product of the checked residuals and the residuals
-    	    check_resid_mul!(resid, geee.tau[j])
+            # The product of the checked residuals and the residuals
+            check_resid_mul!(resid, geee.tau[j])
 
-			# The conditional standard deviations
+            # The conditional standard deviations
             sd .= sqrt.(geee.varfunc.(linpred))
 
-	        # Update D1
-    	    x = geee.X[:, i1:i2]
-        	D1[j] .+= geee.tau_wt[j] * x * diagm(covsolve(geee.cor[j], linpred, sd, zeros(0), cresid)) * x'
+            # Update D1
+            x = geee.X[:, i1:i2]
+            D1[j] .+= geee.tau_wt[j] * x * diagm(covsolve(geee.cor[j], linpred, sd, zeros(0), cresid)) * x'
 
-			# Update D0
-	        v = geee.tau_wt[j] * x * covsolve(geee.cor[j], linpred, sd, zeros(0), resid)
-    	    D0[j] .+= v * v'
+            # Update D0
+            v = geee.tau_wt[j] * x * covsolve(geee.cor[j], linpred, sd, zeros(0), resid)
+            D0[j] .+= v * v'
         end
     end
 
     # Normalize the block for each expectile by the sample size
     n = length(geee.y)
-	for j in eachindex(geee.tau)
-	    D0[j] ./= n
-    	D1[j] ./= n
-	end
+    for j in eachindex(geee.tau)
+        D0[j] ./= n
+        D1[j] ./= n
+    end
 
     vcov = BlockDiagonal(D1) \ BlockDiagonal(D0) / BlockDiagonal(D1)
     vcov ./= n
@@ -243,7 +243,7 @@ end
 
 function dispersion(geee::GEEE, tauj::Int)::Float64
 
-	# The dispersion parameter estimate
+    # The dispersion parameter estimate
     sig2 = 0.0
 
     # Backing storage
@@ -292,7 +292,7 @@ function fit(
     fitargs...,
 ) where {T<:Real}
 
-	c = CorStruct[copy(c) for _ in eachindex(tau)]
+    c = CorStruct[copy(c) for _ in eachindex(tau)]
     geee = GEEE(y, copy(X'), g, tau; cor=c)
 
     return dofit ? fit!(geee) : geee
@@ -309,16 +309,16 @@ function StatsBase.vcov(m::GEEE)
 end
 
 function StatsBase.coefnames(m::StatsModels.TableRegressionModel{GEEE{T},Matrix{T}}) where T
-	return repeat(coefnames(m.mf), length(m.model.tau))	
+    return repeat(coefnames(m.mf), length(m.model.tau))
 end
 
 function StatsBase.coeftable(m::StatsModels.TableRegressionModel{GEEE{T},Matrix{T}}) where T
-	ct = coeftable(m.model)
-	ct.rownms = coefnames(m)
-	return ct
+    ct = coeftable(m.model)
+    ct.rownms = coefnames(m)
+    return ct
 end
 
-function coeftable(mm::GEEE; level::Real = 0.95)
+function StatsBase.coeftable(mm::GEEE; level::Real = 0.95)
     cc = coef(mm)
     se = sqrt.(diag(mm.vcov))
     zz = cc ./ se
@@ -337,3 +337,6 @@ function coeftable(mm::GEEE; level::Real = 0.95)
         4,
     )
 end
+
+corparams(m::StatsModels.TableRegressionModel) = corparams(m.model)
+corparams(m::GEEE) = [corparams(c) for c in m.cor]

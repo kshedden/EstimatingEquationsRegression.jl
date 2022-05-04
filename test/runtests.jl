@@ -535,7 +535,7 @@ end
     @test isapprox(coef(m1), coef(m2), atol = 1e-7)
     @test isapprox(se1, se2, atol = 1e-7)
 
-    # Hold the parameters fixed at the GLM estimates, then estimate the exchangeable 
+    # Hold the parameters fixed at the GLM estimates, then estimate the exchangeable
     # correlation parameter.
     m3 = fit(
         GeneralizedEstimatingEquationsModel,
