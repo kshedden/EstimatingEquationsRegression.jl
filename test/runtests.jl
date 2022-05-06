@@ -1,5 +1,5 @@
 using Test, DataFrames, CSV, StatsBase, StatsModels, LinearAlgebra, Distributions
-using Printf
+using Printf, StableRNGs
 
 using GEE
 using GLM: IdentityLink, LogLink, LogitLink, glm
@@ -49,7 +49,6 @@ end
     @test isapprox(se, [0.015, 0.023, 0.002], atol = 1e-3)
     @test isapprox(dispersion(m), 0.699, atol = 1e-3)
     @test isapprox(corparams(m), -0.696, atol = 1e-3)
-
 end
 
 @testset "logit/binomial autoregressive model" begin
@@ -62,7 +61,6 @@ end
     @test isapprox(se, [0.101, 0.125, 0.153], atol = 1e-3)
     @test isapprox(dispersion(m), 1, atol = 1e-3)
     @test isapprox(corparams(m), -0.163, atol = 1e-3)
-
 end
 
 @testset "log/Poisson autoregressive model" begin
@@ -75,7 +73,6 @@ end
     @test isapprox(se, [0.002, 0.025, 0.029], atol = 1e-3)
     @test isapprox(dispersion(m), 1, atol = 1e-3)
     @test isapprox(corparams(m), -0.722, atol = 1e-3)
-
 end
 
 @testset "log/Gamma autoregressive model" begin
@@ -88,9 +85,7 @@ end
     @test isapprox(se, [0.006, 0.022, 0.026], atol = 1e-3)
     @test isapprox(dispersion(m), 0.118, atol = 1e-3)
     @test isapprox(corparams(m), -0.7132, atol = 1e-3)
-
 end
-
 
 @testset "AR1 covsolve" begin
 
@@ -155,7 +150,6 @@ end
     @test isapprox(rslt[1:2, 3:4], zeros(2, 2))
     @test isapprox(rslt, rslt')
     @test isapprox(diag(rslt), mu .* (1 .- mu))
-
 end
 
 @testset "linear/normal independence model" begin
