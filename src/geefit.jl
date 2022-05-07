@@ -390,7 +390,11 @@ function StatsBase.stderror(m::AbstractGEE; cov_type::String = "robust")::Array{
     return sqrt.(v)
 end
 
-function StatsBase.coeftable(mm::GeneralizedEstimatingEquationsModel; level::Real = 0.95, cov_type::String = "")
+function StatsBase.coeftable(
+    mm::GeneralizedEstimatingEquationsModel;
+    level::Real = 0.95,
+    cov_type::String = "",
+)
     cov_type = (cov_type == "") ? mm.qq.cov_type : cov_type
     cc = coef(mm)
     se = stderror(mm; cov_type = cov_type)

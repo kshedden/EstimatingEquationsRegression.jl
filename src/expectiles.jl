@@ -22,16 +22,32 @@ struct GEEEDensPred{T<:Real} <: GEEELinPred
     X::Matrix{T}
 end
 
-function update_score!(pp::GEEEDensPred, i1::Int, i2::Int, cor::CorStruct, linpred::AbstractVector{T},
-                       sd::AbstractVector{T}, resid::AbstractVector{T}, f::T,
-                       scr) where {T<:Real}
+function update_score!(
+    pp::GEEEDensPred,
+    i1::Int,
+    i2::Int,
+    cor::CorStruct,
+    linpred::AbstractVector{T},
+    sd::AbstractVector{T},
+    resid::AbstractVector{T},
+    f::T,
+    scr,
+) where {T<:Real}
     x = @view pp.X[:, i1:i2]
     scr .+= f * x * covsolve(cor, linpred, sd, zeros(0), resid)
 end
 
-function update_denom!(pp::GEEEDensPred, i1::Int, i2::Int, cor::CorStruct, linpred::AbstractVector{T},
-                       sd::AbstractVector{T}, resid::AbstractVector{T}, f::T,
-                       denom) where {T<:Real}
+function update_denom!(
+    pp::GEEEDensPred,
+    i1::Int,
+    i2::Int,
+    cor::CorStruct,
+    linpred::AbstractVector{T},
+    sd::AbstractVector{T},
+    resid::AbstractVector{T},
+    f::T,
+    denom,
+) where {T<:Real}
     x = @view pp.X[:, i1:i2]
     denom .+= f * x * diagm(covsolve(cor, linpred, sd, zeros(0), resid)) * x'
 end
@@ -117,12 +133,18 @@ end
 
 # Place the linear predictor for the j^th tau value and
 # for group g into linpred.
-function linpred!(geee::GEEE, tauj::Int, g::Int, linpred::T) where T<:AbstractVector
+function linpred!(geee::GEEE, tauj::Int, g::Int, linpred::T) where {T<:AbstractVector}
     i1, i2 = geee.grpix[:, g]
     linpred!(geee.pp, i1, i2, geee.beta[:, tauj], linpred)
 end
 
-function linpred!(pp::GEEEDensPred{T}, i1::Int, i2::Int, beta::AbstractVector{T}, linpred::AbstractVector{T}) where {T<:Real}
+function linpred!(
+    pp::GEEEDensPred{T},
+    i1::Int,
+    i2::Int,
+    beta::AbstractVector{T},
+    linpred::AbstractVector{T},
+) where {T<:Real}
     linpred .= pp.X[:, i1:i2]' * beta
 end
 
@@ -138,7 +160,14 @@ function check_resid_mul!(resid::AbstractVector{S}, tau::T) where {S,T<:Real}
 end
 
 # Place the score for the jth expectile into 'scr'.
-function score!(geee::GEEE, j::Int, scr::Vector{T}, denom::Matrix{T}, linpred::Vector{T}, resid::Vector{T}) where {T<:Real}
+function score!(
+    geee::GEEE,
+    j::Int,
+    scr::Vector{T},
+    denom::Matrix{T},
+    linpred::Vector{T},
+    resid::Vector{T},
+) where {T<:Real}
 
     scr .= 0
     denom .= 0
@@ -230,18 +259,19 @@ function set_vcov!(geee::GEEE)
 
     # Factors in the covariance matrix
     D1 = [zeros(p, p) for _ in eachindex(geee.tau)]
-    D0 = [zeros(p, p) for _ in eachindex(geee.tau)]
+    D0 = zeros(p * q, p * q)
 
     # Get D1 and D0, factors of the covariance matrix
     linpred0 = zeros(n, q)
     resid0 = zeros(n, q)
     cresid0 = zeros(n, q)
     sd0 = zeros(n, q)
-    vv = zeros(p)
+    vv = zeros(p * q)
     for (g, (i1, i2)) in enumerate(eachcol(geee.grpix))
 
         # Get the residual and checked residual vector for all tau values.
-        for j in eachindex(geee.tau)
+        vv .= 0
+        for j = 1:q
             resid = @view resid0[i1:i2, j]
             cresid = @view cresid0[i1:i2, j]
             linpred = @view linpred0[i1:i2, j]
@@ -262,23 +292,44 @@ function set_vcov!(geee::GEEE)
             sd .= sqrt.(geee.varfunc.(linpred))
 
             # Update D1
-            update_denom!(geee.pp, i1, i2, geee.cor[j], linpred, sd, cresid, geee.tau_wt[j], D1[j])
+            update_denom!(
+                geee.pp,
+                i1,
+                i2,
+                geee.cor[j],
+                linpred,
+                sd,
+                cresid,
+                geee.tau_wt[j],
+                D1[j],
+            )
 
             # Update D0
-            vv .= 0
-            update_score!(geee.pp, i1, i2, geee.cor[j], linpred, sd, resid, geee.tau_wt[j], vv)
-            D0[j] .+= vv * vv'
+            jj = (j - 1) * p
+            update_score!(
+                geee.pp,
+                i1,
+                i2,
+                geee.cor[j],
+                linpred,
+                sd,
+                resid,
+                geee.tau_wt[j],
+                @view(vv[jj+1:jj+p])
+            )
+
         end
+        D0 .+= vv * vv'
     end
 
     # Normalize the block for each expectile by the sample size
+    D0 ./= n
     n = length(geee.rr.y)
-    for j in eachindex(geee.tau)
-        D0[j] ./= n
+    for j = 1:q
         D1[j] ./= n
     end
 
-    vcov = BlockDiagonal(D1) \ BlockDiagonal(D0) / BlockDiagonal(D1)
+    vcov = BlockDiagonal(D1) \ D0 / BlockDiagonal(D1)
     vcov ./= n
     geee.vcov = vcov
 end
@@ -335,7 +386,7 @@ function fit(
 ) where {T<:Real}
 
     c = CorStruct[copy(c) for _ in eachindex(tau)]
-    geee = GEEE(y, copy(X'), g, tau; cor=c)
+    geee = GEEE(y, copy(X'), g, tau; cor = c)
 
     return dofit ? fit!(geee) : geee
 end
@@ -350,11 +401,15 @@ function StatsBase.vcov(m::GEEE)
     return m.vcov
 end
 
-function StatsBase.coefnames(m::StatsModels.TableRegressionModel{GEEE{T},Matrix{T}}) where T
+function StatsBase.coefnames(
+    m::StatsModels.TableRegressionModel{GEEE{T},Matrix{T}},
+) where {T}
     return repeat(coefnames(m.mf), length(m.model.tau))
 end
 
-function StatsBase.coeftable(m::StatsModels.TableRegressionModel{GEEE{T},Matrix{T}}) where T
+function StatsBase.coeftable(
+    m::StatsModels.TableRegressionModel{GEEE{T},Matrix{T}},
+) where {T}
     ct = coeftable(m.model)
     ct.rownms = coefnames(m)
     return ct
@@ -367,10 +422,10 @@ function StatsBase.coeftable(mm::GEEE; level::Real = 0.95)
     p = 2 * ccdf.(Ref(Normal()), abs.(zz))
     ci = se * quantile(Normal(), (1 - level) / 2)
     levstr = isinteger(level * 100) ? string(Integer(level * 100)) : string(level * 100)
-    na = ["x$i" for i = 1:size(mm.X, 1)]
+    na = ["x$i" for i = 1:size(mm.pp.X, 1)]
     q = length(mm.tau)
     na = repeat(na, q)
-    tau = kron(mm.tau, ones(size(mm.X, 1)))
+    tau = kron(mm.tau, ones(size(mm.pp.X, 1)))
     CoefTable(
         hcat(tau, cc, se, zz, p, cc + ci, cc - ci),
         ["tau", "Coef.", "Std. Error", "z", "Pr(>|z|)", "Lower $levstr%", "Upper $levstr%"],
