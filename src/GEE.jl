@@ -14,13 +14,17 @@ export CorStruct, IndependenceCor, ExchangeableCor, OrdinalIndependenceCor, AR1C
 export corparams, dispersion, dof, scoretest, modelmatrix, gee
 export expand_ordinal, GEEE, geee, coefnames, coeftable
 
+export GEE2, Varfunc, geevar, ConstantVar, IdentityVar, PowerVar
+
 const FP = AbstractFloat
 const FPVector{T<:FP} = AbstractArray{T,1}
 
+include("varfunc.jl")
 include("corstruct.jl")
 include("linpred.jl")
 include("geefit.jl")
 include("scoretest.jl")
 include("utils.jl")
 include("expectiles.jl")
+include("gee2.jl")
 end

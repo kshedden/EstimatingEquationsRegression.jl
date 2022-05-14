@@ -3,7 +3,7 @@ using LinearAlgebra, BlockDiagonals
 """
     GEEEResp
 
-The response vector and group labels.
+The response vector and group labels for GEE expectile analysis.
 """
 struct GEEEResp{T<:Real} <: ModResp
 

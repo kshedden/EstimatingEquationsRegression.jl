@@ -22,7 +22,7 @@ tau = [0.25, 0.5, 0.75]
 ii0 = [3, 5, 7, 11]
 
 # Non-null parameters
-ii1 = [1, 2, 4, 6, 8, 9, 10, 12] 
+ii1 = [1, 2, 4, 6, 8, 9, 10, 12]
 
 function gen_response(ngrp, m, p)
 
@@ -39,7 +39,7 @@ function gen_response(ngrp, m, p)
     ii = 0
     id = zeros(ngrp * m)
     for i = 1:ngrp
-        y[ii+1:ii+m] .+= randn() .+ randn(m).*sqrt.(1 .+ xmat[ii+1:ii+m, 1].^2)
+        y[ii+1:ii+m] .+= randn() .+ randn(m).*sqrt.(1 .+ xmat[ii+1:ii+m, 2].^2)
         id[ii+1:ii+m] .= i
         ii += m
     end
@@ -69,7 +69,7 @@ function simstudy()
 
     # Coefficients
 	cf = zeros(nrep, q * (p + 1))
-	
+
     for k = 1:nrep
         df = gen_response(ngrp, m, p)
         m1 = geee(@formula(y ~ x1 + x2x + x3), df, df[:, :id], tau)
@@ -82,11 +82,13 @@ function simstudy()
 
 	println("\nMean Z-scores for null coefficients:")
     println(mean(zs[:, ii0], dims = 1))
+
 	println("\nSD of Z-scores for null coefficients:")
     println(std(zs[:, ii0], dims = 1))
 
 	println("\nMean Z-scores for non-null coefficients:")
     println(mean(zs[:, ii1], dims = 1))
+
 	println("\nSD of Z-scores for non-null coefficients:")
     println(std(zs[:, ii1], dims = 1))
 end

@@ -77,7 +77,7 @@ function scoretest(model::AbstractGEE, submodel::AbstractGEE)
     scov = scov .- bmat12' * (amat11 \ amat12)
     scov = scov .+ amat12' * (amat11 \ bmat11) * (amat11 \ amat12)
 
-    stat = score2' * (scov \ score2)
+    stat = score2' * (pinv(scov) * score2)
     dof = length(score2)
     pvalue = 1 - cdf(Chisq(dof), stat)
 

@@ -82,22 +82,22 @@ Covariance matrices for the parameter estimates.
 mutable struct GEECov
 
     "`cov`: the parameter covariance matrix"
-    cov::Array{Float64,2}
+    cov::Matrix{Float64}
 
     "`rcov`: the robust covariance matrix"
-    rcov::Array{Float64,2}
+    rcov::Matrix{Float64}
 
     "`nacov`: the naive (model-dependent) covariance matrix"
-    nacov::Array{Float64,2}
+    nacov::Matrix{Float64}
 
     "`mdcov`: the Mancel-DeRouen bias-reduced robust covariance matrix"
-    mdcov::Array{Float64,2}
+    mdcov::Matrix{Float64}
 
     "`kccov`: the Kauermann-Carroll bias-reduced robust covariance matrix"
-    kccov::Array{Float64,2}
+    kccov::Matrix{Float64}
 
     "`scrcov`: the empirical Gram matrix of the score vectors (not scaled by n)"
-    scrcov::Array{Float64,2}
+    scrcov::Matrix{Float64}
 end
 
 
@@ -165,14 +165,19 @@ function _iterate(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, last::Bool) whe
         w = length(r.wts) > 0 ? r.wts[i1:i2] : zeros(0)
         r.viresid[i1:i2] .= covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], w, r.resid[i1:i2])
         p.score_obs .= p.D' * r.viresid[i1:i2]
-        p.score .= p.score + p.score_obs
-        c.nacov .= c.nacov + p.D' * covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], w, p.D)
+        p.score .+= p.score_obs
+        c.nacov .+= p.D' * covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], w, p.D)
 
         if last
             # Only compute on final iteration
-            c.scrcov .= c.scrcov + p.score_obs * p.score_obs'
+            c.scrcov .+= p.score_obs * p.score_obs'
         end
     end
+
+    if last
+        c.scrcov .= Symmetric((c.scrcov + c.scrcov') / 2)
+    end
+    c.nacov .= Symmetric((c.nacov + c.nacov') / 2)
 end
 
 # Calculate the Mancl-DeRouen and Kauermann-Carroll bias-corrected
@@ -229,6 +234,16 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
     return nfail
 end
 
+# Project x to be a positive semi-definite matrix, also return
+# a boolean indicating whether the matrix had non-negligible
+# negative eigenvalues.
+function pcov(x::Matrix)
+    x = Symmetric((x + x') / 2)
+    a, b = eigen(x)
+    f = minimum(a) <= -1e-8
+    a = clamp.(a, 0, Inf)
+    return Symmetric(b * diagm(a) * b'), f
+end
 
 function _fit!(
     m::AbstractGEE,
@@ -291,12 +306,22 @@ function _fit!(
         last = (iter == maxiter - 1) || cvg
     end
 
-    m.cc.rcov = nacov \ scrcov / nacov
-    m.cc.nacov = inv(nacov) .* dispersion(m)
+    # Robust covariance
+    m.cc.rcov, f = pcov(nacov \ scrcov / nacov)
+    if f
+        @warn("Robust covariance matrix is not positive definite.")
+    end
+
+    # Naive covariance
+    m.cc.nacov, f = pcov(inv(nacov) .* dispersion(m))
+    if f
+        @warn("Naive covariance matrix is not positive definite")
+    end
+
     if cvg
         m.converged = true
     else
-        @warn "Warning: GEE failed to converge."
+        @warn("Warning: GEE failed to converge.")
     end
 
     # The model has been fit
