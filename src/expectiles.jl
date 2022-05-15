@@ -16,14 +16,14 @@ end
 
 abstract type GEEELinPred <: LinPred end
 
-struct GEEEDensPred{T<:Real} <: GEEELinPred
+struct GEEEDensePred{T<:Real} <: GEEELinPred
 
     # p x n covariate matrix, variables are rows, cases are columns
     X::Matrix{T}
 end
 
 function update_score!(
-    pp::GEEEDensPred,
+    pp::GEEEDensePred,
     i1::Int,
     i2::Int,
     cor::CorStruct,
@@ -38,7 +38,7 @@ function update_score!(
 end
 
 function update_denom!(
-    pp::GEEEDensPred,
+    pp::GEEEDensePred,
     i1::Int,
     i2::Int,
     cor::CorStruct,
@@ -59,9 +59,11 @@ Fit expectile regression models using GEE.
 """
 mutable struct GEEE{T<:Real} <: AbstractGEE
 
+    # The response
     rr::GEEEResp{T}
 
-    pp::GEEEDensPred{T}
+    # The covariates
+    pp::GEEEDensePred{T}
 
     # Each column contains the first and last index of a group.
     grpix::Matrix{Int}
@@ -126,7 +128,7 @@ function GEEE(
     vcov = zeros(p * q, p * q)
 
     rr = GEEEResp(y, grp)
-    pp = GEEEDensPred(X)
+    pp = GEEEDensePred(X)
 
     return GEEE(rr, pp, gix, tau, tau_wt, beta, cor, varfunc, vcov, mx)
 end
@@ -139,7 +141,7 @@ function linpred!(geee::GEEE, tauj::Int, g::Int, linpred::T) where {T<:AbstractV
 end
 
 function linpred!(
-    pp::GEEEDensPred{T},
+    pp::GEEEDensePred{T},
     i1::Int,
     i2::Int,
     beta::AbstractVector{T},
@@ -223,7 +225,7 @@ function check!(v::AbstractVector{T}, tau::Float64) where {T<:Real}
 end
 
 # Update the parameter estimates for the j^th expectile.
-function update!(geee::GEEE, j::Int)::Float64
+function update!(geee::GEEE, j::Int, upcor::Bool)::Float64
     p, n = size(geee.pp.X)
     score = zeros(p)
     denom = zeros(p, p)
@@ -233,15 +235,26 @@ function update!(geee::GEEE, j::Int)::Float64
     step = denom \ score
     geee.beta[:, j] .+= step
     sresid = resid ./ sqrt.(geee.varfunc.(linpred))
-    updatecor(geee.cor[j], sresid, geee.grpix, p)
+    if upcor
+        updatecor(geee.cor[j], sresid, geee.grpix, p)
+    end
     return norm(step)
 end
 
 # Estimate the coefficients for the j^th expectile.
 function fit_tau!(geee::GEEE, j::Int; maxiter::Int = 100, tol::Real = 1e-6)
-    p = size(geee.pp.X, 1)
+
+    # Fit without covariance updates.
+    for itr in 1:maxiter
+        ss = update!(geee, j, false)
+        if ss < tol
+            break
+        end
+    end
+
+    # Fit with covariance updates.
     for itr = 1:maxiter
-        ss = update!(geee, j)
+        ss = update!(geee, j, true)
         if ss < tol
             break
         end
@@ -362,7 +375,16 @@ function dispersion(geee::GEEE, tauj::Int)::Float64
     return sig2
 end
 
+function startingvalues(pp::GEEEDensePred{T}, m::Int, y::Vector{T}) where {T<:Real}
+    u, s, v = svd(pp.X')
+    b = v * diagm(s) \ u' * y
+    c = hcat([b for _ in 1:m]...)
+    return c
+end
+
 function StatsBase.fit!(geee::GEEE)
+
+    geee.beta .= startingvalues(geee.pp, length(geee.tau), geee.rr.y)
 
     # Fit all coefficients
     for j in eachindex(geee.tau)
