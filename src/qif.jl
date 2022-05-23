@@ -114,7 +114,7 @@ function rmul!(
     i1::Int,
     i2::Int,
 ) where {T<:Real}
-    r .+= pp.X[:, i1:i2]' * v
+    r .+= pp.X[i1:i2, :] * v
 end
 
 # Multiply the design matrix for one group along the variables.
@@ -125,18 +125,7 @@ function lmul!(
     i1::Int,
     i2::Int,
 ) where {T<:Real}
-    r .+= pp.X[:, i1:i2] * v
-end
-
-# TODO
-function smul!(
-    pp::QIFDensePred{T},
-    m::Matrix{T},
-    r::AbstractArray{T},
-    i1::Int,
-    i2::Int,
-) where {T<:Real}
-    r .+= pp.X[:, i1:i2] * m * pp.X[:, i1:i2]'
+    r .+= pp.X[i1:i2, :]' * v
 end
 
 struct QIFHollowBasis <: QIFBasis end
@@ -228,28 +217,28 @@ function scorederiv!(qif::QIF{T}, g::Int, scd::Matrix{T}) where {T<:Real}
     d2mudeta2 = @view(qif.rr.d2mudeta2[i1:i2])
     sresid = @view(qif.rr.sresid[i1:i2])
 
-    x = qif.pp.X[:, i1:i2]
+    x = qif.pp.X[i1:i2, :]
 
     jj = 0
     for b in qif.basis
         rb = rbasis(b, T, gs)
         for j = 1:p
             scd[jj+1:jj+p, j] .+=
-                x * Diagonal(d2mudeta2 .* x[j, :] ./ sd) * rb * sresid
+                x' * Diagonal(d2mudeta2 .* x[:, j] ./ sd) * rb * sresid
             scd[jj+1:jj+p, j] .-=
                 0.5 *
-                x *
-                Diagonal(dmudeta .^ 2 .* vd .* x[j, :] ./ sd .^ 3) *
+                x' *
+                Diagonal(dmudeta .^ 2 .* vd .* x[:, j] ./ sd .^ 3) *
                 rb *
                 sresid
             scd[jj+1:jj+p, j] .-=
                 0.5 *
-                x *
+                x' *
                 Diagonal(dmudeta ./ sd) *
                 rb *
-                (vd .* dmudeta .* x[j, :] .* sresid ./ sd .^ 2)
+                (vd .* dmudeta .* x[:, j] .* sresid ./ sd .^ 2)
             scd[jj+1:jj+p, j] .-=
-                x * Diagonal(dmudeta ./ sd) * rb * (dmudeta .* x[j, :] ./ sd)
+                x' * Diagonal(dmudeta ./ sd) * rb * (dmudeta .* x[:, j] ./ sd)
         end
         jj += p
     end
@@ -428,7 +417,7 @@ function fit(
 
     gix, mxgrp = groupix(grp)
     rr = QIFResp(y)
-    pp = QIFDensePred(copy(X'))
+    pp = QIFDensePred(X)
     q = length(basis)
     m = QIF(
         rr,

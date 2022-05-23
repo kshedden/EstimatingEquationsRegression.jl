@@ -1,12 +1,9 @@
 using Test, DataFrames, CSV, StatsBase, StatsModels, LinearAlgebra, Distributions
-using Printf, StableRNGs
+using Printf, StableRNGs, FiniteDifferences
+using GEE, GLM, Random
 
-using GEE
-using GLM: IdentityLink, LogLink, LogitLink, glm
-using Random
-
-include("runtests_geee.jl")
 include("runtests_qif.jl")
+include("runtests_geee.jl")
 
 function data1()
     X = [
