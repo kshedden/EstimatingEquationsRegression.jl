@@ -19,32 +19,32 @@ p = length(beta)
 tau = [0.25, 0.5, 0.75]
 
 # Null parameters
-ii0 = [3, 5, 7, 11]
+ii0 = [5, 7] #[3, 5, 7, 11]
 
 # Non-null parameters
-ii1 = [1, 2, 4, 6, 8, 9, 10, 12]
+ii1 = [i for i in 1:3*p if !(i in ii0)]
 
 function gen_response(ngrp, m, p)
 
-	# Explanatory variables
+    # Explanatory variables
     xmat = randn(ngrp * m, p)
 
     # Expected value of response variable
     ey = xmat * beta
 
-	# This will hold the response values
+    # This will hold the response values
     y = copy(ey)
 
-	# Generate correlated data for each block
+    # Generate correlated data for each block
     ii = 0
     id = zeros(ngrp * m)
     for i = 1:ngrp
-        y[ii+1:ii+m] .+= randn() .+ randn(m).*sqrt.(1 .+ xmat[ii+1:ii+m, 2].^2)
+        y[ii+1:ii+m] .+= randn() .+ randn(m) .* sqrt.(1 .+ xmat[ii+1:ii+m, 2] .^ 2)
         id[ii+1:ii+m] .= i
         ii += m
     end
 
-	# Make a dataframe from the data
+    # Make a dataframe from the data
     df = DataFrame(:y => y, :id => id)
     for k = 1:p
         df[:, Symbol("x$(k)")] = xmat[:, k]
@@ -58,17 +58,17 @@ end
 
 function simstudy()
 
-	# Number of simulation replications
+    # Number of simulation replications
     nrep = 100
 
     # Number of expectiles to jointly estimate
     q = length(tau)
 
-	# Z-scores
+    # Z-scores
     zs = zeros(nrep, q * (p + 1))
 
     # Coefficients
-	cf = zeros(nrep, q * (p + 1))
+    cf = zeros(nrep, q * (p + 1))
 
     for k = 1:nrep
         df = gen_response(ngrp, m, p)
@@ -78,18 +78,18 @@ function simstudy()
     end
 
     println("Mean of coefficients:")
-    println(mean(cf, dims=1))
+    println(mean(cf, dims = 1))
 
-	println("\nMean Z-scores for null coefficients:")
+    println("\nMean Z-scores for null coefficients:")
     println(mean(zs[:, ii0], dims = 1))
 
-	println("\nSD of Z-scores for null coefficients:")
+    println("\nSD of Z-scores for null coefficients:")
     println(std(zs[:, ii0], dims = 1))
 
-	println("\nMean Z-scores for non-null coefficients:")
+    println("\nMean Z-scores for non-null coefficients:")
     println(mean(zs[:, ii1], dims = 1))
 
-	println("\nSD of Z-scores for non-null coefficients:")
+    println("\nSD of Z-scores for non-null coefficients:")
     println(std(zs[:, ii1], dims = 1))
 end
 

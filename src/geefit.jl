@@ -1,6 +1,7 @@
 using Printf, GLM
 
-abstract type AbstractGEE <: GLM.AbstractGLM end
+abstract type AbstractMarginalModel <: GLM.AbstractGLM end
+abstract type AbstractGEE <: AbstractMarginalModel end
 
 """
     GEEResp
@@ -361,30 +362,6 @@ function dispersion(m::AbstractGEE)
     else
         one(eltype(r))
     end
-end
-
-# Return a 2 x m array, each column of which contains the indices
-# spanning one group; also return the size of the largest group.
-function groupix(g::AbstractVector)
-
-    if !issorted(g)
-        error("Group vector is not sorted")
-    end
-
-    ii = Int[]
-    b, mx = 1, 0
-    for i = 2:length(g)
-        if g[i] != g[i-1]
-            push!(ii, b, i - 1)
-            mx = i - b > mx ? i - b : mx
-            b = i
-        end
-    end
-    push!(ii, b, length(g))
-    mx = length(g) - b + 1 > mx ? length(g) - b + 1 : mx
-    ii = reshape(ii, 2, div(length(ii), 2))
-
-    return tuple(ii, mx)
 end
 
 function StatsBase.vcov(m::AbstractGEE; cov_type::String = "")
