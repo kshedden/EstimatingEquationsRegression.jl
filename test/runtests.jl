@@ -6,6 +6,7 @@ using GLM: IdentityLink, LogLink, LogitLink, glm
 using Random
 
 include("runtests_geee.jl")
+include("runtests_qif.jl")
 
 function data1()
     X = [
