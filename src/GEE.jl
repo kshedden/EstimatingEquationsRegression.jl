@@ -1,11 +1,14 @@
 module GEE
 
-using Distributions, LinearAlgebra, StatsBase, DataFrames, StatsModels
+using Distributions, LinearAlgebra, StatsBase, DataFrames, StatsModels, Reexport
 using LinearAlgebra: BlasReal, diag
 using StatsBase: CoefTable, StatisticalModel, RegressionModel
 using GLM: Link, LinPredModel, LinPred, ModResp, linkfun, linkinv, glmvar, mueta
 using GLM: IdentityLink, LogLink, LogitLink
 using GLM: GeneralizedLinearModel, dispersion_parameter, canonicallink
+
+@reexport using StatsModels
+@reexport using GLM
 
 import StatsBase: coef, coeftable, vcov, stderr, dof, dof_residual, fit, predict
 

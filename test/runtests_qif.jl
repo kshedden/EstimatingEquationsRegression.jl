@@ -67,7 +67,7 @@ end
     )
 
     for i = 1:10
-        scov = randn(3 * q, 3 * q)
+        scov = randn(rng, 3 * q, 3 * q)
         scov = scov' * scov
         fun, grad! = GEE.get_fungrad(m, scov)
         beta = randn(rng, 3)

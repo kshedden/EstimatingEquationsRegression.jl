@@ -53,14 +53,17 @@ working correlation structure.
 """
 struct GEEprop{D<:UnivariateDistribution,L<:Link,R<:CorStruct}
 
-    "`dist`: the distribution family, used only to determine the variance"
-    dist::D
-
     "`L`: the link function (maps from mean to linear predictor)"
     link::L
 
+    "`varfunc`: used to determine the variance, only one of varfunc and `dist` should be specified"
+    varfunc::Varfunc
+
     "`cor`: the working correlation structure"
     cor::R
+
+    "`dist`: the distribution family, used only to determine the variance, not used if varfunc is provided."
+    dist::D
 
     "`ddof`: adjustment to the denominator degrees of freedom for estimating
      the scale parameter, this value is subtracted from the sample size to
@@ -71,8 +74,8 @@ struct GEEprop{D<:UnivariateDistribution,L<:Link,R<:CorStruct}
     cov_type::String
 end
 
-function GEEprop(dist, link, cor, ddof; cov_type = "robust")
-    GEEprop(dist, link, cor, ddof, cov_type)
+function GEEprop(link, varfunc, cor, dist, ddof; cov_type = "robust")
+    GEEprop(link, varfunc, cor, dist, ddof, cov_type)
 end
 
 """
@@ -144,12 +147,28 @@ end
 
 # Preliminary calculations for one iteration of GEE fitting.
 function _iterprep(p::LinPred, r::GEEResp, q::GEEprop)
+
+    # Update the linear predictor
     updateη!(p, r.η, r.offset)
+
+    # Update the conditional means
     r.mu .= linkinv.(q.link, r.η)
+
+    # Update the raw residuals
     r.resid .= r.y .- r.mu
-    r.sd .= glmvar.(q.dist, r.mu)
+
+    # The variance can be determined either by the family, or supplied directly.
+    r.sd .= if typeof(q.varfunc) <: NullVar
+        glmvar.(q.dist, r.mu)
+    else
+        geevar.(q.varfunc, r.mu)
+    end
     r.sd .= sqrt.(r.sd)
+
+    # Update the standardized residuals
     r.sresid .= r.resid ./ r.sd
+
+    # Update the derivative of the mean function with respect to the linear predictor
     r.dμdη .= mueta.(q.link, r.η)
 end
 
@@ -417,6 +436,77 @@ dof(x::GeneralizedEstimatingEquationsModel) =
     dispersion_parameter(x.qq.dist) ? length(coef(x)) + 1 : length(coef(x))
 
 
+# Ensure that X, y, wts, and offset have the same type
+function prepargs(X, y, g, wts, offset)
+
+    (gi, mg) = groupix(g)
+
+    if !(size(X, 1) == length(y) == length(g))
+        m = @sprintf(
+            "Number of rows in X (%d), y (%d), and g (%d) must match",
+            size(X, 1),
+            length(y),
+            length(g)
+        )
+        throw(DimensionMismatch(m))
+    end
+
+    tl = [typeof(first(X)), typeof(first(y))]
+    if length(wts) > 0
+        push!(tl, typeof(first(wts)))
+    end
+    if length(offset) > 0
+        push!(tl, typeof(first(offset)))
+    end
+    t = promote_type(tl...)
+    X = t.(X)
+    y = t.(y)
+    wts = t.(wts)
+    offset = t.(offset)
+    return X, y, wts, offset, gi, mg
+end
+
+"""
+    fit(GeneralizedEstimatingEquationsModel, X, y, g, l, v, [c = IndependenceCor()]; <keyword arguments>)
+
+Fit a generalized linear model to data using generalized estimating equations (GEE).  This
+interface emphasizes the "quasi-likelihood" framework for GEE and requires direct specification
+of the link and variance function, without reference to any distribution/family.
+"""
+function fit(
+    ::Type{GeneralizedEstimatingEquationsModel},
+    X::AbstractMatrix,
+    y::AbstractVector,
+    g::AbstractVector,
+    l::Link,
+    v::Varfunc,
+    c::CorStruct = IndependenceCor();
+    cov_type::String = "robust",
+    dofit::Bool = true,
+    wts::AbstractVector{<:Real} = similar(y, 0),
+    offset::AbstractVector{<:Real} = similar(y, 0),
+    ddof_scale::Union{Int,Nothing} = nothing,
+    fitargs...,
+)
+    d = Normal() # Not used, only a placeholder
+
+    X, y, wts, offset, gi, mg = prepargs(X, y, g, wts, offset)
+
+    rr = GEEResp(y, gi, wts, offset)
+    p = size(X, 2)
+    ddof = isnothing(ddof_scale) ? p : ddof_scale
+    res = GeneralizedEstimatingEquationsModel(
+        rr,
+        DensePred(X, mg),
+        GEEprop(l, v, c, d, ddof; cov_type),
+        GEECov(p),
+        false,
+        false,
+    )
+
+    return dofit ? fit!(res; fitargs...) : res
+end
+
 """
     fit(GeneralizedEstimatingEquationsModel, X, y, g, d, c, [l = canonicallink(d)]; <keyword arguments>)
 
@@ -467,38 +557,15 @@ function fit(
     ddof_scale::Union{Int,Nothing} = nothing,
     fitargs...,
 )
-    if !(size(X, 1) == length(y) == length(g))
-        m = @sprintf(
-            "Number of rows in X (%d), y (%d), and g (%d) must match",
-            size(X, 1),
-            length(y),
-            length(g)
-        )
-        throw(DimensionMismatch(m))
-    end
+    X, y, wts, offset, gi, mg = prepargs(X, y, g, wts, offset)
 
-    # Ensure that X, y, wts, and offset have the same type
-    tl = [typeof(first(X)), typeof(first(y))]
-    if length(wts) > 0
-        push!(tl, typeof(first(wts)))
-    end
-    if length(offset) > 0
-        push!(tl, typeof(first(offset)))
-    end
-    t = promote_type(tl...)
-    X = t.(X)
-    y = t.(y)
-    wts = t.(wts)
-    offset = t.(offset)
-
-    (gi, mg) = groupix(g)
     rr = GEEResp(y, gi, wts, offset)
     p = size(X, 2)
     ddof = isnothing(ddof_scale) ? p : ddof_scale
     res = GeneralizedEstimatingEquationsModel(
         rr,
         DensePred(X, mg),
-        GEEprop(d, l, c, ddof; cov_type),
+        GEEprop(l, NullVar(), c, d, ddof; cov_type),
         GEECov(p),
         false,
         false,
@@ -540,6 +607,5 @@ Return the parameters that define the working correlation structure.
 function corparams(m::AbstractGEE)
     return corparams(m.qq.cor)
 end
-
 
 GLM.Link(m::GeneralizedEstimatingEquationsModel) = m.qq.link

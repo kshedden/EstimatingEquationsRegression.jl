@@ -347,11 +347,12 @@ function get_fungrad(qif::QIF, scov::Matrix)
     return fun, grad!
 end
 
-function fitbeta!(qif::QIF, start)
+function fitbeta!(qif::QIF, start; verbose::Bool=false, g_tol=1e-5)
 
     fun, grad! = get_fungrad(qif, qif.scov)
 
-    r = optimize(fun, grad!, start, LBFGS())
+    opts = Optim.Options(show_trace=verbose, g_tol=g_tol)
+    r = optimize(fun, grad!, start, LBFGS(), opts)
 
     if !Optim.converged(r)
         @warn("fitbeta did not converged")
@@ -363,21 +364,21 @@ end
 
 function StatsBase.fit!(
     qif::QIF;
-    gtol::Float64 = 1e-5,
+    g_tol::Float64 = 1e-5,
     verbose::Bool = false,
-    maxiter::Int = 200,
+    maxiter::Int = 5,
 )
     start = zeros(length(qif.beta))
-    cnv = []
-    for k = 1:5
-        c = fitbeta!(qif, start)
-        push!(cnv, c)
+    cnv = false
+    for k = 1:maxiter
+        if verbose
+            println(@sprintf("=== Outer iteration %d:", k))
+        end
+        cnv = fitbeta!(qif, start; verbose=verbose, g_tol=g_tol)
         updateCov!(qif)
     end
 
-    if last(cnv)
-        qif.converged = true
-    end
+    qif.converged = cnv
 
     return qif
 end

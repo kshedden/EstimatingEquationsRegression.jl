@@ -2,6 +2,7 @@ using Test, DataFrames, CSV, StatsBase, StatsModels, LinearAlgebra, Distribution
 using Printf, StableRNGs, FiniteDifferences
 using GEE, GLM, Random
 
+# DEBUG
 include("runtests_qif.jl")
 include("runtests_geee.jl")
 
@@ -25,21 +26,59 @@ function data1()
     y = [3.0, 1, 4, 4, 1, 3, 1, 2, 1, 1, 2, 4, 2, 2]
     z = [0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0]
     g = [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3]
-    return y, z, X, g
+    df = DataFrame(y=y, z=z, x1=X[:,1], x2=X[:,2], x3=X[:,3], g=g)
+
+    return y, z, X, g, df
 end
 
 function save()
-    y, z, X, g = data1()
-    da = DataFrame(X)
-    da[:, :y] = y
-    da[:, :z] = z
-    da[:, :g] = g
+    y, z, X, g, da = data1()
     CSV.write("tmp.csv", da)
+end
+
+@testset "Equivalence of distribution-based and variance function-based interfaces (Gaussian/linear)" begin
+
+    y, _, X, g, df = data1()
+
+    # Without formulas
+    m1 = fit(GeneralizedEstimatingEquationsModel, X, y, g, Normal(), ExchangeableCor())
+    m2 = fit(GeneralizedEstimatingEquationsModel, X, y, g, IdentityLink(), ConstantVar(), ExchangeableCor())
+    @test isapprox(coef(m1), coef(m2))
+    @test isapprox(vcov(m1), vcov(m2))
+    @test isapprox(corparams(m1), corparams(m2))
+
+    # With formulas
+    f = @formula(y ~ x1 + x2 + x3)
+    m1 = gee(f, df, g, Normal(), ExchangeableCor())
+    m2 = gee(f, df, g, IdentityLink(), ConstantVar(), ExchangeableCor())
+    @test isapprox(coef(m1), coef(m2))
+    @test isapprox(vcov(m1), vcov(m2))
+    @test isapprox(corparams(m1), corparams(m2))
+end
+
+@testset "Equivalence of distribution-based and variance function-based interfaces (Poisson/log)" begin
+
+    y, _, X, g, df = data1()
+
+    # Without formulas
+    m1 = fit(GeneralizedEstimatingEquationsModel, X, y, g, Poisson(), ExchangeableCor())
+    m2 = fit(GeneralizedEstimatingEquationsModel, X, y, g, LogLink(), IdentityVar(), ExchangeableCor())
+    @test isapprox(coef(m1), coef(m2))
+    @test isapprox(vcov(m1), vcov(m2), atol=1e-5, rtol=1e-5)
+    @test isapprox(corparams(m1), corparams(m2))
+
+    # With formulas
+    f = @formula(y ~ x1 + x2 + x3)
+    m1 = gee(f, df, g, Poisson(), ExchangeableCor())
+    m2 = gee(f, df, g, LogLink(), IdentityVar(), ExchangeableCor())
+    @test isapprox(coef(m1), coef(m2))
+    @test isapprox(vcov(m1), vcov(m2), atol=1e-5, rtol=1e-5)
+    @test isapprox(corparams(m1), corparams(m2))
 end
 
 @testset "linear/normal autoregressive model" begin
 
-    y, _, X, g = data1()
+    y, _, X, g, _ = data1()
     m = fit(GeneralizedEstimatingEquationsModel, X, y, g, Normal(), AR1Cor())
     se = sqrt.(diag(vcov(m)))
 
@@ -51,7 +90,7 @@ end
 
 @testset "logit/binomial autoregressive model" begin
 
-    _, z, X, g = data1()
+    _, z, X, g, _ = data1()
     m = fit(GeneralizedEstimatingEquationsModel, X, z, g, Binomial(), AR1Cor())
     se = sqrt.(diag(vcov(m)))
 
@@ -63,7 +102,7 @@ end
 
 @testset "log/Poisson autoregressive model" begin
 
-    y, _, X, g = data1()
+    y, _, X, g, _ = data1()
     m = fit(GeneralizedEstimatingEquationsModel, X, y, g, Poisson(), AR1Cor())
     se = sqrt.(diag(vcov(m)))
 
@@ -75,7 +114,7 @@ end
 
 @testset "log/Gamma autoregressive model" begin
 
-    y, _, X, g = data1()
+    y, _, X, g, _ = data1()
     m = fit(GeneralizedEstimatingEquationsModel, X, y, g, Gamma(), AR1Cor(), LogLink())
     se = sqrt.(diag(vcov(m)))
 
@@ -152,7 +191,7 @@ end
 
 @testset "linear/normal independence model" begin
 
-    y, _, X, g = data1()
+    y, _, X, g, _ = data1()
     m = fit(
         GeneralizedEstimatingEquationsModel,
         X,
@@ -253,7 +292,7 @@ end
 end
 
 @testset "logit/Binomial independence model" begin
-    _, y, X, g = data1()
+    _, y, X, g, _ = data1()
     m = fit(
         GeneralizedEstimatingEquationsModel,
         X,
@@ -324,7 +363,7 @@ end
 end
 
 @testset "log/Poisson independence model" begin
-    y, _, X, g = data1()
+    y, _, X, g, _ = data1()
     m = fit(
         GeneralizedEstimatingEquationsModel,
         X,
@@ -395,7 +434,7 @@ end
 end
 
 @testset "log/Gamma independence model" begin
-    y, _, X, g = data1()
+    y, _, X, g, _ = data1()
     m = fit(
         GeneralizedEstimatingEquationsModel,
         X,
@@ -500,7 +539,7 @@ end
 
 @testset "linear/normal exchangeable model" begin
 
-    y, _, X, g = data1()
+    y, _, X, g, _ = data1()
     m = fit(GeneralizedEstimatingEquationsModel, X, y, g, Normal(), ExchangeableCor())
     se = sqrt.(diag(vcov(m)))
 
@@ -560,7 +599,7 @@ end
 end
 
 @testset "log/Poisson exchangeable model" begin
-    y, _, X, g = data1()
+    y, _, X, g, _ = data1()
     m = fit(
         GeneralizedEstimatingEquationsModel,
         X,
@@ -578,7 +617,7 @@ end
 end
 
 @testset "logit/Binomial exchangeable model" begin
-    _, z, X, g = data1()
+    _, z, X, g, _ = data1()
     m = fit(
         GeneralizedEstimatingEquationsModel,
         X,
@@ -596,7 +635,7 @@ end
 end
 
 @testset "log/Gamma exchangeable model" begin
-    y, _, X, g = data1()
+    y, _, X, g, _ = data1()
     m = fit(
         GeneralizedEstimatingEquationsModel,
         X,
