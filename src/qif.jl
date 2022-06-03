@@ -223,14 +223,9 @@ function scorederiv!(qif::QIF{T}, g::Int, scd::Matrix{T}) where {T<:Real}
     for b in qif.basis
         rb = rbasis(b, T, gs)
         for j = 1:p
-            scd[jj+1:jj+p, j] .+=
-                x' * Diagonal(d2mudeta2 .* x[:, j] ./ sd) * rb * sresid
+            scd[jj+1:jj+p, j] .+= x' * Diagonal(d2mudeta2 .* x[:, j] ./ sd) * rb * sresid
             scd[jj+1:jj+p, j] .-=
-                0.5 *
-                x' *
-                Diagonal(dmudeta .^ 2 .* vd .* x[:, j] ./ sd .^ 3) *
-                rb *
-                sresid
+                0.5 * x' * Diagonal(dmudeta .^ 2 .* vd .* x[:, j] ./ sd .^ 3) * rb * sresid
             scd[jj+1:jj+p, j] .-=
                 0.5 *
                 x' *
@@ -347,11 +342,11 @@ function get_fungrad(qif::QIF, scov::Matrix)
     return fun, grad!
 end
 
-function fitbeta!(qif::QIF, start; verbose::Bool=false, g_tol=1e-5)
+function fitbeta!(qif::QIF, start; verbose::Bool = false, g_tol = 1e-5)
 
     fun, grad! = get_fungrad(qif, qif.scov)
 
-    opts = Optim.Options(show_trace=verbose, g_tol=g_tol)
+    opts = Optim.Options(show_trace = verbose, g_tol = g_tol)
     r = optimize(fun, grad!, start, LBFGS(), opts)
 
     if !Optim.converged(r)
@@ -374,7 +369,7 @@ function StatsBase.fit!(
         if verbose
             println(@sprintf("=== Outer iteration %d:", k))
         end
-        cnv = fitbeta!(qif, start; verbose=verbose, g_tol=g_tol)
+        cnv = fitbeta!(qif, start; verbose = verbose, g_tol = g_tol)
         updateCov!(qif)
     end
 
