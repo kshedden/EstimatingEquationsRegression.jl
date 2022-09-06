@@ -1,3 +1,10 @@
+@testset "QIF coefnames" begin
+    rng = StableRNG(1)
+    df = DataFrame(y=randn(rng, 10), xv1=randn(rng, 10), xv2=randn(rng, 10), g=[1,1,2,2,3,3,4,4,5,5])
+    m = qif(@formula(y ~ xv1 + xv2), df, df[:, :g])
+    @test all(coefnames(m) .== ["(Intercept)", "xv1", "xv2"])
+end
+
 @testset "QIF score Jacobian" begin
 
     rng = StableRNG(123)
@@ -113,9 +120,9 @@ end
     ]
 
     for b in basis
-        y = rand.(Poisson.(exp.(lp)))
+        y = rand.(rng, Poisson.(exp.(lp)))
         m = qif(xm, y, grp; basis = b, link = GLM.LogLink(), varfunc = IdentityVar())
-        @test isapprox(coef(m), [0.5, 0, -0.5], atol = 0.05, rtol = 0.1)
+        @test isapprox(coef(m), [0.5, 0, -0.5], atol = 0.1, rtol = 0.1)
     end
 end
 

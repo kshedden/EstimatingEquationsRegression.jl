@@ -34,29 +34,19 @@ struct GEE2Resp{T<:Real} <: ModResp
     gix::Matrix{Int}
 end
 
-abstract type GEE2LinPred end
-
-struct GEE2DensePred{T<:Real} <: GEE2LinPred
-    X::Matrix{T}
-end
-
-function hmul(pp::GEE2DensePred{T}, i1::Int, i2::Int, v::Vector{T}) where {T<:Real}
-    return pp.X[:, i1:i2] .* v'
-end
-
 """
     GEE2
 
 Fit regression models using GEE2.
 """
-mutable struct GEE2{T<:Real,L<:Link,P<:GEE2LinPred,V1<:Varfunc,V2<:Varfunc} <: AbstractGEE
+mutable struct GEE2{T<:Real,L<:Link,P<:LinPred,V1<:Varfunc,V2<:Varfunc} <: AbstractGEE
 
-    # Response information for y, y^2 and y*y products
+    # Response information for y, centered y^2, and standardized y*y products
     rr_lin::GEE2Resp{T}
     rr_sqr::GEE2Resp{T}
     rr_prod::GEE2Resp{T}
 
-    # Linear predictors for y, y^2, and y*y products
+    # Linear predictors for y, centered y^2, and standardized y*y products
     pp_lin::P
     pp_sqr::P
     pp_prod::P
@@ -90,8 +80,8 @@ function GEE2Resp(y, grp, gix)
     return GEE2Resp(y, zeros(n), zeros(n), zeros(n), zeros(n), zeros(n), zeros(n), grp, gix)
 end
 
-function update_eta!(pp::GEE2DensePred{T}, eta::Vector{T}, beta::Vector{T}) where {T<:Real}
-    eta .= vec(beta' * pp.X)
+function update_eta!(pp::P, eta::Vector{T}, beta::Vector{T}) where {P<:LinPred,T<:Real}
+    eta .= pp.X * beta
 end
 
 function iterprep_lin!(gee::GEE2, beta::Vector{Vector{T}}) where {T<:Real}
@@ -119,17 +109,18 @@ end
 
 function updateDeriv!(
     gee::GEE2,
-    i1::Int,
-    i2::Int,
+    pp::LinPred,
+    g::Int,
     beta::Vector{Vector{T}},
     D::Matrix{T},
 ) where {T<:Real}
 
     D .= 0
-    p1, p2 = length(beta[1]), length(beta[2])
+    p1, p2, p3 = length(beta[1]), length(beta[2]), length(bega[3])
+    i1, i2 = pp.gix[:, g]
+    gs = i2 - i1 + 1
 
     # Derivative of the linear terms with respect to linear parameters
-    gs = i2 - i1 + 1
     D[1:p1, 1:gs] .= hmul(gee.pp_lin, i1, i2, gee.rr_lin.dmudeta1[i1:i2])
 
     # Derivatives of the squared terms with respect to linear parameters
@@ -151,11 +142,13 @@ function update!(gee::GEE2, beta::Vector{Vector{T}}) where {T<:Real}
     iterprep!(gee, beta)
     score = zeros(p1 + p2)
     denom = zeros(p1 + p2, p1 + p2)
-    for (i1, i2) in eachcol(gee.rr_lin.gix)
+    for g in 1:size(gee.rr_lin.gix, 2)
+        i1, i2 = gee.rr_lin.gix[:, g]
         gs = i2 - i1 + 1
-        D = zeros(p1 + p2, 2 * gs)
-        vir = zeros(2 * gs)
-        updateDeriv!(gee, i1, i2, beta, D)
+        gsc = div(gs * (gs - 1), 2)
+        D = zeros(p1 + p2, 2 * gs + gsc)
+        vir = zeros(2 * gs + gsc)
+        updateDeriv!(gee, gee.pp_lin, g, beta, D)
         w = zeros(0)
         vir[1:gs] = covsolve(
             gee.cor[1],
@@ -205,7 +198,7 @@ function expand_cor(y::Vector, X::AbstractMatrix, grp::Vector, gix::Matrix{Int})
 
     yy = zeros(eltype(y), n)
     q = size(X, 2)
-    XX = zeros(eltype(X), 2 * q, n)
+    XX = zeros(eltype(X), n, 2 * q)
     grp2 = zeros(eltype(grp), n)
     gix2 = zeros(Int, size(gix)...)
 
@@ -231,8 +224,8 @@ function expand_cor(y::Vector, X::AbstractMatrix, grp::Vector, gix::Matrix{Int})
         for j1 = 1:m
             for j2 = 1:j1-1
                 yy[ii] = y[i1+j1-1] * y[i1+j2-1]
-                XX[1:q, ii] = abs.(X[i1+j1-1, :] - X[i1+j2-1, :])
-                XX[q+1:end, ii] = (X[i1+j1-1, :] + X[i1+j2-1, :]) / 2
+                XX[ii, 1:q] = abs.(X[i1+j1-1, :] - X[i1+j2-1, :])
+                XX[ii, q+1:end] = (X[i1+j1-1, :] + X[i1+j2-1, :]) / 2
                 ii += 1
             end
         end
@@ -241,12 +234,40 @@ function expand_cor(y::Vector, X::AbstractMatrix, grp::Vector, gix::Matrix{Int})
     return yy, XX, grp2, gix2
 end
 
+function expand_y!(gee::GEE2, beta)
+
+    gee.rr_sqr.y .= (gee.rr_lin.y - gee.rr_lin.mu).^2
+
+    ii = 1
+    yy = gee.rr_prod.y
+    mu1 = gee.rr_lin.mu
+    va1 = gee.rr_sqr.mu
+    for (j, (i1, i2)) in enumerate(eachcol(gee.rr_lin.gix))
+        # Group size
+        m = i2 - i1 + 1
+
+        # Expanded group size
+        mx = div(m * (m - 1), 2)
+
+        # Products of pairs of observations
+        for j1 = 1:m
+            for j2 = 1:j1-1
+                yy[ii] = (y[i1+j1-1] - mu1[i1+j1-1]) * (y[i1+j2-1] - mu1[i1+j2-1])
+                yy[ii] /= sqrt(va[i1+j1-1] * va[i1+j2-1])
+                ii += 1
+            end
+        end
+    end
+
+end
+
 function StatsBase.fit!(gee::GEE2; maxiter::Int = 100)
 
-    p, n = size(gee.pp_lin.X)
+    (; n, p) = gee.pp_lin
     beta = [randn(p), randn(p), randn(2 * p)]
 
     for k = 1:maxiter
+        expand!(gee, beta)
         iterprep!(gee, beta)
         update!(gee, beta)
     end
@@ -266,7 +287,7 @@ function fit(
     fitargs...,
 ) where {T<:Real}
 
-    gee2 = GEE2(y, copy(X'), g, l, vf, vf2, c)
+    gee2 = GEE2(y, copy(X), g, l, vf, vf2, c)
 
     return dofit ? fit!(gee2) : geee
 end
@@ -303,10 +324,11 @@ function GEE2(
     rr_var = GEE2Resp(y .^ 2, grp, gix)
     rr_cor = GEE2Resp(yc, grpc, gixc)
 
-    Xt = copy(X')
-    pp_mn = GEE2DensePred(Xt)
-    pp_var = GEE2DensePred(Xt)
-    pp_cor = GEE2DensePred(Xc)
+    n, p = size(X)
+    Xt = copy(X)
+    pp_mn = GEEEDensePred(n, p, gix, Xt)
+    pp_var = GEEEDensePred(n, p, gix, Xt)
+    pp_cor = GEEEDensePred(size(Xc, 1), 2*p, gixc, Xc)
 
     q = 4 * size(X, 2)
     cor = CorStruct[corlin, corsqr]

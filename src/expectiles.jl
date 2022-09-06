@@ -32,9 +32,32 @@ end
 
 abstract type GEEELinPred <: LinPred end
 
+# TODO: make this universal for this package
 struct GEEEDensePred{T<:Real} <: GEEELinPred
+
+    # The number of observations
+    n::Int
+
+    # The number of covariates
+    p::Int
+
+    # Each column contains the first and last index of a group.
+    gix::Matrix{Int}
+
     # n x p covariate matrix, observations are rows, variables are columns
     X::Matrix{T}
+end
+
+# Compute the product X * v where X is the design matrix.
+function xtv(pp::GEEEDensePred, rhs::T) where {T<:AbstractArray}
+    return pp.X * rhs
+end
+
+# Compute the product X * v where X is the submatrix of the design matrix
+# containing data for group 'g'.
+function xtvg(pp::GEEEDensePred, g::Int, rhs::T) where {T<:AbstractArray}
+    i1, i2 = pp.gix[:, g]
+    return pp.X[i1:i2, :]' * rhs
 end
 
 """
@@ -42,13 +65,13 @@ end
 
 Fit expectile regression models using GEE.
 """
-mutable struct GEEE{T<:Real} <: AbstractGEE
+mutable struct GEEE{T<:Real,L<:LinPred} <: AbstractGEE
 
     # The response
     rr::GEEEResp{T}
 
     # The covariates
-    pp::GEEEDensePred{T}
+    pp::L
 
     # Each column contains the first and last index of a group.
     grpix::Matrix{Int}
@@ -66,7 +89,7 @@ mutable struct GEEE{T<:Real} <: AbstractGEE
     cor::Vector{CorStruct}
 
     # Map conditional mean to conditional variance
-    varfunc::Function
+    varfunc::Varfunc
 
     # The variance/covariance matrix of the parameter estimates
     vcov::Matrix{Float64}
@@ -79,33 +102,30 @@ mutable struct GEEE{T<:Real} <: AbstractGEE
 end
 
 function update_score_group!(
-    geee::GEEE,
-    i1::Int,
-    i2::Int,
+    pp::T,
+    g::Int,
     cor::CorStruct,
-    linpred::AbstractVector{T},
-    sd::AbstractVector{T},
-    resid::AbstractVector{T},
-    f::T,
+    linpred::AbstractVector,
+    sd::AbstractVector,
+    resid::AbstractVector,
+    f,
     scr,
-) where {T<:Real}
-    x = @view geee.pp.X[i1:i2, :]
-    scr .+= f * x' * covsolve(cor, linpred, sd, zeros(0), resid)
+) where {T<:LinPred}
+    scr .+= xtvg(pp, g, f * covsolve(cor, linpred, sd, zeros(0), resid))
 end
 
 function update_denom_group!(
-    pp::GEEEDensePred,
-    i1::Int,
-    i2::Int,
+    pp::T,
+    g::Int,
     cor::CorStruct,
-    linpred::AbstractVector{T},
-    sd::AbstractVector{T},
-    cresid::AbstractVector{T},
-    f::T,
+    linpred::AbstractVector,
+    sd::AbstractVector,
+    cresid::AbstractVector,
+    f,
     denom,
-) where {T<:Real}
-    x = @view pp.X[i1:i2, :]
-    denom .+= f * x' * covsolve(cor, linpred, sd, zeros(0), Diagonal(cresid) * x)
+) where {T<:LinPred}
+    u = xtvg(pp, g, Diagonal(cresid))
+    denom .+= xtvg(pp, g, f * covsolve(cor, linpred, sd, zeros(0), u'))
 end
 
 function GEEE(
@@ -130,11 +150,14 @@ function GEEE(
 
     # Default variance function
     if isnothing(varfunc)
-        varfunc = x -> 1.0
+        varfunc = ConstantVar()
     end
 
     # Number of expectiles
     q = length(tau)
+
+    # Number of observations
+    n = size(X, 1)
 
     # Number of covariates
     p = size(X, 2)
@@ -155,7 +178,7 @@ function GEEE(
         zeros(T, length(y), length(tau)),
         zeros(T, length(y), length(tau)),
     )
-    pp = GEEEDensePred(X)
+    pp = GEEEDensePred(n, p, gix, X)
 
     return GEEE(
         rr,
@@ -174,7 +197,7 @@ end
 
 # Place the linear predictor for the j^th tau value into linpred.
 function linpred!(geee::GEEE, j::Int)
-    geee.rr.linpred[:, j] .= geee.pp.X * geee.beta[:, j]
+    geee.rr.linpred[:, j] .= xtv(geee.pp, geee.beta[:, j])
 end
 
 function iterprep!(geee::GEEE, j::Int)
@@ -183,7 +206,7 @@ function iterprep!(geee::GEEE, j::Int)
     linpred!(geee, j)
 
     # Update the residuals for the j'th expectile
-    geee.rr.resid[:, j] = geee.rr.y - geee.rr.linpred[:, j]
+    geee.rr.resid[:, j] .= geee.rr.y - geee.rr.linpred[:, j]
 
     # Update the checked residuals for the j'th expectile
     geee.rr.cresid[:, j] .= geee.rr.resid[:, j]
@@ -193,7 +216,7 @@ function iterprep!(geee::GEEE, j::Int)
     geee.rr.cresidx[:, j] .= geee.rr.resid[:, j] .* geee.rr.cresid[:, j]
 
     # Update the conditional standard deviations for the j'th expectile
-    geee.rr.sd[:, j] = sqrt.(geee.varfunc.(geee.rr.linpred[:, j]))
+    geee.rr.sd[:, j] .= sqrt.(geevar.(geee.varfunc, geee.rr.linpred[:, j]))
 end
 
 # Place the score and denominator for the jth expectile into 'scr' and 'denom'.
@@ -213,20 +236,10 @@ function score!(geee::GEEE, j::Int, scr::Vector{T}, denom::Matrix{T}) where {T<:
         sd1 = @view geee.rr.sd[i1:i2, j]
 
         # Update the score function
-        update_score_group!(geee, i1, i2, geee.cor[j], linpred1, sd1, cresidx1, 1.0, scr)
+        update_score_group!(geee.pp, g, geee.cor[j], linpred1, sd1, cresidx1, 1.0, scr)
 
         # Update the denominator for the parameter update
-        update_denom_group!(
-            geee.pp,
-            i1,
-            i2,
-            geee.cor[j],
-            linpred1,
-            sd1,
-            cresid1,
-            1.0,
-            denom,
-        )
+        update_denom_group!(geee.pp, g, geee.cor[j], linpred1, sd1, cresid1, 1.0, denom)
     end
 end
 
@@ -241,7 +254,8 @@ function check!(v::AbstractVector{T}, tau::Float64) where {T<:Real}
     end
 end
 
-# Update the parameter estimates for the j^th expectile.
+# Update the parameter estimates for the j^th expectile.  If 'upcor' is true,
+# first update the correlation parameters.
 function update_params!(geee::GEEE, j::Int, upcor::Bool)::Float64
 
     if upcor
@@ -251,7 +265,7 @@ function update_params!(geee::GEEE, j::Int, upcor::Bool)::Float64
         updatecor(geee.cor[j], sresid, geee.grpix, p)
     end
 
-    p = size(geee.pp.X, 2)
+    p = geee.pp.p
     score = zeros(p)
     denom = zeros(p, p)
     score!(geee, j, score, denom)
@@ -303,7 +317,7 @@ end
 function set_vcov!(geee::GEEE)
 
     # Number of covariates
-    n, p = size(geee.pp.X)
+    (; n, p) = geee.pp
 
     # Number of expectiles being jointly estimated
     q = length(geee.tau)
@@ -329,8 +343,7 @@ function set_vcov!(geee::GEEE)
             # Update D1
             update_denom_group!(
                 geee.pp,
-                i1,
-                i2,
+                g,
                 geee.cor[j],
                 linpred,
                 sd,
@@ -341,9 +354,8 @@ function set_vcov!(geee::GEEE)
 
             jj = (j - 1) * p
             update_score_group!(
-                geee,
-                i1,
-                i2,
+                geee.pp,
+                g,
                 geee.cor[j],
                 linpred,
                 sd,
@@ -431,14 +443,14 @@ function StatsBase.vcov(m::GEEE)
 end
 
 function StatsBase.coefnames(
-    m::StatsModels.TableRegressionModel{GEEE{T},Matrix{T}},
-) where {T}
+    m::StatsModels.TableRegressionModel{GEEE{S,T},Matrix{S}},
+) where {S,T}
     return repeat(coefnames(m.mf), length(m.model.tau))
 end
 
 function StatsBase.coeftable(
-    m::StatsModels.TableRegressionModel{GEEE{T},Matrix{T}},
-) where {T}
+    m::StatsModels.TableRegressionModel{GEEE{S,T},Matrix{S}},
+) where {S,T}
     ct = coeftable(m.model)
     ct.rownms = coefnames(m)
     return ct
@@ -467,9 +479,25 @@ end
 corparams(m::StatsModels.TableRegressionModel) = corparams(m.model)
 corparams(m::GEEE) = [corparams(c) for c in m.cor]
 
-function predict(mm::GEEE, newX::AbstractMatrix)
-    eta = newX * coef(mm)
-    va = newX * vcov(mm) * newX'
+function StatsBase.predict(mm::GEEE, newX::AbstractMatrix; tauj::Int=1)
+    p = mm.pp.p
+    jj = p*(tauj - 1)
+    cf = coef(mm)[jj+1:jj+p]
+    vc = vcov(mm)[jj+1:jj+p, jj+1:jj+p]
+    eta = newX * cf
+    va = newX * vc * newX'
+    sd = sqrt.(diag(va))
+    return (prediction = eta, lower = eta - 2 * sd, upper = eta + 2 * sd)
+end
+
+function StatsBase.predict(mm::GEEE; tauj::Int=1)
+    p = mm.pp.p
+    jj = p*(tauj - 1)
+    cf = coef(mm)[jj+1:jj+p]
+    vc = vcov(mm)[jj+1:jj+p, jj+1:jj+p]
+    eta = xtv(mm.pp, cf)
+    va = xtv(mm.pp, vc)
+    va = xtv(mm.pp, va')
     sd = sqrt.(diag(va))
     return (prediction = eta, lower = eta - 2 * sd, upper = eta + 2 * sd)
 end

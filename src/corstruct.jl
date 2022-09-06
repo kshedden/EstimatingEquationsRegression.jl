@@ -110,7 +110,7 @@ function updatecor(c::ExchangeableCor, sresid::FPVector, g::Matrix{Int}, ddof::I
     scale = ssr / (n - ddof)
     sxp /= scale
     c.aa = sxp / (npr - ddof)
-
+    c.aa = clamp(c.aa, 0, 0.999)
 end
 
 function covsolve(
@@ -160,8 +160,8 @@ function covsolve(
     w::AbstractVector{T},
     z::AbstractArray{T},
 ) where {T<:Real}
-    a = c.aa
     p = length(sd)
+    a = c.aa
     f = a / ((1 - a) * (1 + a * (p - 1)))
     if length(w) > 0
         di = Diagonal(w ./ sd)

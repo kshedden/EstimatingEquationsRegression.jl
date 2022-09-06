@@ -288,17 +288,21 @@ function _fit!(
     independence = typeof(cor) <: IndependenceCor && isnothing(start)
 
     if isnothing(start)
-        # The default maxiter for GLM seems to be too small
-        maxit = min(maxiter, 100)
+        dist1 = if typeof(dist) <: QuasiLikelihood
+            typeof(link) <: LogLink ? Poisson() : Normal()
+        else
+            dist
+        end
+
         gm = StatsBase.fit(
-            GeneralizedLinearModel,
-            pp.X,
-            y,
-            dist,
-            link;
-            wts = m.rr.wts,
-            maxiter = maxit,
-        )
+                GeneralizedLinearModel,
+                pp.X,
+                y,
+                dist1,
+                link;
+                wts = m.rr.wts,
+                maxiter=1000
+            )
         start = coef(gm)
     end
 
@@ -367,6 +371,7 @@ Distributions.Distribution(q::GEEprop) = q.dist
 Distributions.Distribution(m::GeneralizedEstimatingEquationsModel) = Distribution(m.qq)
 
 Corstruct(m::GeneralizedEstimatingEquationsModel{G,L}) where {G,L} = m.qq.cor
+Varfunc(m::GeneralizedEstimatingEquationsModel{G,L}) where {G,L} = m.qq.varfunc
 
 function dispersion(m::AbstractGEE)
     r = m.rr.sresid
@@ -466,6 +471,10 @@ function prepargs(X, y, g, wts, offset)
     return X, y, wts, offset, gi, mg
 end
 
+# Fake distribution to indicate that the GEE was specified using link and variance
+# function not the distribution.
+struct QuasiLikelihood <: ContinuousUnivariateDistribution end
+
 """
     fit(GeneralizedEstimatingEquationsModel, X, y, g, l, v, [c = IndependenceCor()]; <keyword arguments>)
 
@@ -488,7 +497,7 @@ function fit(
     ddof_scale::Union{Int,Nothing} = nothing,
     fitargs...,
 )
-    d = Normal() # Not used, only a placeholder
+    d = QuasiLikelihood()
 
     X, y, wts, offset, gi, mg = prepargs(X, y, g, wts, offset)
 

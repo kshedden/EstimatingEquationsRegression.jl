@@ -14,7 +14,7 @@ mutable struct DensePred{T<:BlasReal} <: LinPred
     "`mxg`: the maximum group size"
     mxg::Int
 
-    "`D`: the design matrix for one group, weighted by dμdη"
+    "`D`: the Jacobian of the mean with respect to the coefficients"
     D::Matrix{T}
 
     "`score`: the current score vector"
@@ -40,7 +40,7 @@ end
 function updateη!(p::DensePred, η::FPVector, off::FPVector)
     η .= p.X * p.beta0
     if length(off) > 0
-        η += off
+        η .+= off
     end
 end
 

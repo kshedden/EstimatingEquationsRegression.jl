@@ -1,4 +1,9 @@
-using GLM
+@testset "GEEE coefnames" begin
+    rng = StableRNG(1)
+    df = DataFrame(y=randn(rng, 10), xv1=randn(rng, 10), xv2=randn(rng, 10), g=[1,1,2,2,3,3,4,4,5,5])
+    m = geee(@formula(y ~ xv1 + xv2), df, df[:, :g], [0.2, 0.5])
+    @test all(coefnames(m) .== ["(Intercept)", "xv1", "xv2", "(Intercept)", "xv1", "xv2"])
+end
 
 @testset "GEEE at tau=0.5 match to OLS/GEE" begin
 
@@ -42,3 +47,4 @@ end
     t = [-0.66, 1, -0.36, 0, 1, 0, 0.66, 1, 0.36]
     @test isapprox(m, t, atol = 1e-2, rtol = 1e-3)
 end
+
