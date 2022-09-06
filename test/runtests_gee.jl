@@ -518,7 +518,14 @@ end
 @testset "linear/normal exchangeable model" begin
 
     y, _, X, g, _ = data1()
-    m = fit(GeneralizedEstimatingEquationsModel, X[:, 1:1], y, g, Normal(), ExchangeableCor())#0.4836), fitcor=false)
+    m = fit(
+        GeneralizedEstimatingEquationsModel,
+        X[:, 1:1],
+        y,
+        g,
+        Normal(),
+        ExchangeableCor(),
+    )#0.4836), fitcor=false)
     se = sqrt.(diag(vcov(m)))
     @test isapprox(coef(m), [0.2718], atol = 1e-4)
     @test isapprox(se, [0.037], atol = 1e-3)
@@ -585,7 +592,7 @@ end
         Poisson(),
         ExchangeableCor(0),
         LogLink(),
-        fit_cor=false
+        fit_cor = false,
     )
     se = sqrt.(diag(vcov(m)))
     @test isapprox(coef(m), [0.1423], atol = 1e-4)
@@ -629,4 +636,3 @@ end
     @test isapprox(dispersion(m), 1)
     @test isapprox(corparams(m), 0, atol = 1e-3)
 end
-

@@ -1,6 +1,11 @@
 @testset "QIF coefnames" begin
     rng = StableRNG(1)
-    df = DataFrame(y=randn(rng, 10), xv1=randn(rng, 10), xv2=randn(rng, 10), g=[1,1,2,2,3,3,4,4,5,5])
+    df = DataFrame(
+        y = randn(rng, 10),
+        xv1 = randn(rng, 10),
+        xv2 = randn(rng, 10),
+        g = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5],
+    )
     m = qif(@formula(y ~ xv1 + xv2), df, df[:, :g])
     @test all(coefnames(m) .== ["(Intercept)", "xv1", "xv2"])
 end

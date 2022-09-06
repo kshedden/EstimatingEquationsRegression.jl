@@ -479,9 +479,9 @@ end
 corparams(m::StatsModels.TableRegressionModel) = corparams(m.model)
 corparams(m::GEEE) = [corparams(c) for c in m.cor]
 
-function StatsBase.predict(mm::GEEE, newX::AbstractMatrix; tauj::Int=1)
+function StatsBase.predict(mm::GEEE, newX::AbstractMatrix; tauj::Int = 1)
     p = mm.pp.p
-    jj = p*(tauj - 1)
+    jj = p * (tauj - 1)
     cf = coef(mm)[jj+1:jj+p]
     vc = vcov(mm)[jj+1:jj+p, jj+1:jj+p]
     eta = newX * cf
@@ -490,9 +490,9 @@ function StatsBase.predict(mm::GEEE, newX::AbstractMatrix; tauj::Int=1)
     return (prediction = eta, lower = eta - 2 * sd, upper = eta + 2 * sd)
 end
 
-function StatsBase.predict(mm::GEEE; tauj::Int=1)
+function StatsBase.predict(mm::GEEE; tauj::Int = 1)
     p = mm.pp.p
-    jj = p*(tauj - 1)
+    jj = p * (tauj - 1)
     cf = coef(mm)[jj+1:jj+p]
     vc = vcov(mm)[jj+1:jj+p, jj+1:jj+p]
     eta = xtv(mm.pp, cf)

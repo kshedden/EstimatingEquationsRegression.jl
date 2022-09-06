@@ -142,7 +142,7 @@ function update!(gee::GEE2, beta::Vector{Vector{T}}) where {T<:Real}
     iterprep!(gee, beta)
     score = zeros(p1 + p2)
     denom = zeros(p1 + p2, p1 + p2)
-    for g in 1:size(gee.rr_lin.gix, 2)
+    for g = 1:size(gee.rr_lin.gix, 2)
         i1, i2 = gee.rr_lin.gix[:, g]
         gs = i2 - i1 + 1
         gsc = div(gs * (gs - 1), 2)
@@ -236,7 +236,7 @@ end
 
 function expand_y!(gee::GEE2, beta)
 
-    gee.rr_sqr.y .= (gee.rr_lin.y - gee.rr_lin.mu).^2
+    gee.rr_sqr.y .= (gee.rr_lin.y - gee.rr_lin.mu) .^ 2
 
     ii = 1
     yy = gee.rr_prod.y
@@ -328,7 +328,7 @@ function GEE2(
     Xt = copy(X)
     pp_mn = GEEEDensePred(n, p, gix, Xt)
     pp_var = GEEEDensePred(n, p, gix, Xt)
-    pp_cor = GEEEDensePred(size(Xc, 1), 2*p, gixc, Xc)
+    pp_cor = GEEEDensePred(size(Xc, 1), 2 * p, gixc, Xc)
 
     q = 4 * size(X, 2)
     cor = CorStruct[corlin, corsqr]

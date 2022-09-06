@@ -295,14 +295,14 @@ function _fit!(
         end
 
         gm = StatsBase.fit(
-                GeneralizedLinearModel,
-                pp.X,
-                y,
-                dist1,
-                link;
-                wts = m.rr.wts,
-                maxiter=1000
-            )
+            GeneralizedLinearModel,
+            pp.X,
+            y,
+            dist1,
+            link;
+            wts = m.rr.wts,
+            maxiter = 1000,
+        )
         start = coef(gm)
     end
 
