@@ -19,8 +19,9 @@ export expand_ordinal, GEEE, geee, coefnames, coeftable
 export QIF, qif, QIFBasis, QIFIdentityBasis, QIFHollowBasis, QIFSubdiagonalBasis
 
 export predict
+export Varfunc, geevar, ConstantVar, IdentityVar, PowerVar
 
-export GEE2, Varfunc, geevar, ConstantVar, IdentityVar, PowerVar
+#export GEE2
 
 const FP = AbstractFloat
 const FPVector{T<:FP} = AbstractArray{T,1}
@@ -33,5 +34,5 @@ include("scoretest.jl")
 include("utils.jl")
 include("expectiles.jl")
 include("qif.jl")
-include("gee2.jl")
+#include("gee2.jl")
 end

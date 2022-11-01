@@ -172,7 +172,7 @@ function _iterprep(p::LinPred, r::GEEResp, q::GEEprop)
     r.dμdη .= mueta.(q.link, r.η)
 end
 
-function _iterate(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, last::Bool) where {T<:Real}
+function _iterate(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, last::Bool)
 
     p.score .= 0
     c.nacov .= 0
@@ -373,7 +373,7 @@ Distributions.Distribution(m::GeneralizedEstimatingEquationsModel) = Distributio
 Corstruct(m::GeneralizedEstimatingEquationsModel{G,L}) where {G,L} = m.qq.cor
 Varfunc(m::GeneralizedEstimatingEquationsModel{G,L}) where {G,L} = m.qq.varfunc
 
-function dispersion(m::AbstractGEE)
+function GLM.dispersion(m::AbstractGEE)
     r = m.rr.sresid
     if dispersion_parameter(m.qq.dist)
         if length(m.rr.wts) > 0

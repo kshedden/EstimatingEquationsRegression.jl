@@ -379,7 +379,7 @@ function set_vcov!(geee::GEEE)
     geee.vcov = vcov
 end
 
-function dispersion(geee::GEEE, tauj::Int)::Float64
+function GLM.dispersion(geee::GEEE, tauj::Int)::Float64
 
     n, p = size(geee.pp.X)
     iterprep!(geee, tauj)
