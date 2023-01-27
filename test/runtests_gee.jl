@@ -1,3 +1,31 @@
+@testset "Check offset" begin
+
+    y, _, X, g, df = data1()
+    rng = StableRNG(123)
+    offset = rand(rng, length(y))
+
+    # In a Gaussian linear model, using an offset is the same as shifting the response.
+    m0 = fit(GeneralizedEstimatingEquationsModel, X, y, g, Normal(), ExchangeableCor())
+    m1 = fit(GeneralizedEstimatingEquationsModel, X, y+offset, g, Normal(),
+             ExchangeableCor(); offset=offset)
+    @test isapprox(coef(m0), coef(m1))
+    @test isapprox(vcov(m0), vcov(m1))
+
+    # A constant offset only changes the intercept and does not change the
+    # standard errors.
+    X[:, 1] .= 1
+    offset = ones(length(y))
+    for fam in [Normal, Poisson]
+        m0 = fit(GeneralizedEstimatingEquationsModel, X, y, g, fam(),
+                 IndependenceCor())
+        m1 = fit(GeneralizedEstimatingEquationsModel, X, y, g, fam(),
+                 IndependenceCor(); offset=offset)
+        @test isapprox(coef(m0)[1], coef(m1)[1] + 1)
+        @test isapprox(coef(m0)[2:end], coef(m1)[2:end])
+        @test isapprox(vcov(m0), vcov(m1))
+    end
+end
+
 @testset "Equivalence of distribution-based and variance function-based interfaces (Gaussian/linear)" begin
 
     y, _, X, g, df = data1()
@@ -21,6 +49,42 @@
     f = @formula(y ~ x1 + x2 + x3)
     m1 = gee(f, df, g, Normal(), ExchangeableCor())
     m2 = gee(f, df, g, IdentityLink(), ConstantVar(), ExchangeableCor())
+    @test isapprox(coef(m1), coef(m2))
+    @test isapprox(vcov(m1), vcov(m2))
+    @test isapprox(corparams(m1), corparams(m2))
+end
+
+@testset "Equivalence of distribution-based and variance function-based interfaces (Binomial/logit)" begin
+
+    _, y, X, g, df = data1()
+
+    # Without formulas
+    m1 = fit(
+        GeneralizedEstimatingEquationsModel,
+        X,
+        y,
+        g,
+        Binomial(),
+        ExchangeableCor(),
+        LogitLink(),
+    )
+    m2 = fit(
+        GeneralizedEstimatingEquationsModel,
+        X,
+        y,
+        g,
+        LogitLink(),
+        BinomialVar(),
+        ExchangeableCor(),
+    )
+    @test isapprox(coef(m1), coef(m2))
+    @test isapprox(vcov(m1), vcov(m2))
+    @test isapprox(corparams(m1), corparams(m2))
+
+    # With formulas
+    f = @formula(z ~ x1 + x2 + x3)
+    m1 = gee(f, df, g, Binomial(), ExchangeableCor(), LogitLink())
+    m2 = gee(f, df, g, LogitLink(), BinomialVar(), ExchangeableCor())
     @test isapprox(coef(m1), coef(m2))
     @test isapprox(vcov(m1), vcov(m2))
     @test isapprox(corparams(m1), corparams(m2))

@@ -19,7 +19,7 @@ export expand_ordinal, GEEE, geee, coefnames, coeftable
 export QIF, qif, QIFBasis, QIFIdentityBasis, QIFHollowBasis, QIFSubdiagonalBasis
 
 export predict
-export Varfunc, geevar, ConstantVar, IdentityVar, PowerVar
+export Varfunc, geevar, ConstantVar, IdentityVar, BinomialVar, PowerVar
 
 #export GEE2
 
