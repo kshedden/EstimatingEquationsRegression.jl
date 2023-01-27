@@ -32,6 +32,6 @@ function save()
     CSV.write("data1.csv", da)
 end
 
-include("runtests_gee.jl")
-include("runtests_geee.jl")
-include("runtests_qif.jl")
+include("gee.jl")
+include("geee.jl")
+include("qif.jl")
