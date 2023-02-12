@@ -1,15 +1,12 @@
 module GEE
 
-using Distributions, LinearAlgebra, StatsBase, DataFrames, StatsModels, Reexport
+using Distributions, LinearAlgebra, StatsBase, DataFrames, StatsModels
 using LinearAlgebra: BlasReal, diag
 using StatsBase: CoefTable, StatisticalModel, RegressionModel
 import StatsBase: coef, coeftable, vcov, stderr, dof, dof_residual, fit, predict
 using GLM: Link, LinPredModel, LinPred, ModResp, linkfun, linkinv, glmvar, mueta
 using GLM: IdentityLink, LogLink, LogitLink
 using GLM: GeneralizedLinearModel, dispersion_parameter, canonicallink
-
-@reexport using StatsModels
-@reexport using GLM
 
 export fit, fit!, GeneralizedEstimatingEquationsModel, vcov, stderr, coef
 export CorStruct, IndependenceCor, ExchangeableCor, OrdinalIndependenceCor, AR1Cor
@@ -20,8 +17,6 @@ export QIF, qif, QIFBasis, QIFIdentityBasis, QIFHollowBasis, QIFSubdiagonalBasis
 
 export predict
 export Varfunc, geevar, ConstantVar, IdentityVar, BinomialVar, PowerVar
-
-#export GEE2
 
 const FP = AbstractFloat
 const FPVector{T<:FP} = AbstractArray{T,1}

@@ -1,6 +1,9 @@
 using Test, DataFrames, CSV, StatsBase, LinearAlgebra, Distributions
-using Printf, StableRNGs, FiniteDifferences
+using Printf
+using StableRNGs
+using FiniteDifferences
 using GEE, GLM, Random
+using RCall
 
 function data1()
     X = [
@@ -32,6 +35,7 @@ function save()
     CSV.write("data1.csv", da)
 end
 
+include("gee_r.jl")
 include("gee.jl")
 include("geee.jl")
 include("qif.jl")
