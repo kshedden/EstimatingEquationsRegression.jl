@@ -1,5 +1,5 @@
 
-function gendat_linear(ngroup, gsize, p, r, rng)
+function gendat(ngroup, gsize, p, r, rng, dist)
 
     # Sample size per group
     n = 1 .+ rand(Poisson(gsize), ngroup)
@@ -17,36 +17,19 @@ function gendat_linear(ngroup, gsize, p, r, rng)
         X[:, j] = r*X[:, j-1] + sqrt(1-r^2)*X[:, j]
     end
 
-    ey = X[:, 1] - 2*X[:, 2]
-    y = ey + ri + randn(N)
+    lp = X[:, 1] - 2*X[:, 2]
 
-    return (id=id, X=X, y=y, ey=ey)
-end
-
-function gendat_poisson(ngroup, gsize, p, r, rng)
-
-    # Sample size per group
-    n = 1 .+ rand(Poisson(gsize), ngroup)
-    N = sum(n)
-
-    # Group labels
-    id = vcat([fill(i, n[i]) for i in eachindex(n)]...)
-
-    # Random intercepts
-    ri = randn(ngroup)
-    ri = ri[id]
-
-    X = randn(N, p)
-    for j in 2:p
-        X[:, j] = r*X[:, j-1] + sqrt(1-r^2)*X[:, j]
+    if dist == :Gaussian
+        ey = lp
+        y = ey + ri + randn(N)
+    elseif dist == :Poisson
+        ey = exp.(0.2*lp)
+        e = (ri + randn(N)) / sqrt(2)
+        u = cdf(Normal(), e)
+        y = quantile.(Poisson.(ey), u)
+    else
+        error("!!")
     end
-
-    ey = exp.(0.1*(X[:, 1] - 2*X[:, 2]))
-
-    # Use copula to generate correlated Poisson values
-    e = (ri + randn(N)) / sqrt(2)
-    u = cdf(Normal(), e)
-    y = quantile.(Poisson.(ey), u)
 
     return (id=id, X=X, y=y, ey=ey)
 end
@@ -55,7 +38,7 @@ end
 
     rng = StableRNG(123)
 
-    d = gendat_linear(100, 10, 10, 0.4, rng)
+    d = gendat(100, 10, 10, 0.4, rng, :Gaussian)
 
     (; id, y, X, ey) = d
 
@@ -102,7 +85,7 @@ end
 
     rng = StableRNG(123)
 
-    d = gendat_poisson(100, 10, 10, 0.4, rng)
+    d = gendat(100, 10, 10, 0.4, rng, :Poisson)
 
     (; id, y, X, ey) = d
 

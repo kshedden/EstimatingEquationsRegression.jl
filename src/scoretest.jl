@@ -30,16 +30,18 @@ end
 """
     scoretest(model::AbstractGEE, submodel::AbstractGEE)
 
-GEE score test comparing submodel to model.  model must not have
+GEE score test comparing submodel to model.  model need not have
 been fit before calling scoretest.
 """
 function scoretest(model::AbstractGEE, submodel::AbstractGEE)
+
+    # Contents of model will be altered so copy it.
+    model = deepcopy(model)
 
     xm = modelmatrix(model)
     xs = modelmatrix(submodel)
 
     # Checks for whether test is appropriate
-    !model.fit || throw("model must not have been fit before calling scoretest")
     size(xm, 1) == size(xs, 1) ||
         throw(error("scoretest models must have same number of rows"))
     size(xs, 2) < size(xm, 2) ||
