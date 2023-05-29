@@ -23,19 +23,7 @@ using EstimatingEquationsRegression, Random, RDatasets, StatsModels, Plots
 da = dataset("SASmixed", "SIMS")
 da = sort(da, :Class)
 f = @formula(Gain ~ Pretot)
-````
-
-````
-FormulaTerm
-Response:
-  Gain(unknown)
-Predictors:
-  Pretot(unknown)
-````
-
-m1 uses independence working correlation by default.
-
-````julia
+# m1 uses independence working correlation by default.
 m1 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :Class])
 m2 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :Class],
          IdentityLink(), ConstantVar(), ExchangeableCor())
