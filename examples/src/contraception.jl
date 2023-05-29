@@ -41,6 +41,8 @@ m2 = fit(GeneralizedEstimatingEquationsModel,
          con, con[:, :District],
          Binomial(), ExchangeableCor(), LogitLink())
 
+# There is a moderate level of correlation between women
+# living in the same district:
 corparams(m1.model)
 
 # We see that older women are less likely to use contraception than
@@ -77,7 +79,8 @@ m4 = fit(GeneralizedEstimatingEquationsModel,
          con, con[:, :District],
          LogitLink(), BinomialVar(), ExchangeableCor())
 
-scoretest(m3.model, m4.model)
+st = scoretest(m3.model, m4.model)
+pvalue(st)
 
 # The score test above is used to assess whether the `LivCh` variable
 # contributes to the variation in contraceptive use.  A score test is

@@ -45,7 +45,30 @@ m2 = fit(GeneralizedEstimatingEquationsModel,
          @formula(Use1 ~ Age + LivCh + Urban),
          con, con[:, :District],
          Binomial(), ExchangeableCor(), LogitLink())
+````
 
+````
+StatsModels.TableRegressionModel{GeneralizedEstimatingEquationsModel{GEE.GEEResp{Float64}, GEE.DensePred{Float64}}, Matrix{Float64}}
+
+Use1 ~ 1 + Age + LivCh + Urban
+
+Coefficients:
+────────────────────────────────────────────────────────────────────────────
+                  Coef.  Std. Error      z  Pr(>|z|)   Lower 95%   Upper 95%
+────────────────────────────────────────────────────────────────────────────
+(Intercept)  -1.60517    0.180197    -8.91    <1e-18  -1.95835    -1.25199
+Age          -0.0253875  0.00674856  -3.76    0.0002  -0.0386144  -0.0121605
+LivCh: 1      1.06048    0.188543     5.62    <1e-07   0.690944    1.43002
+LivCh: 2      1.31064    0.161215     8.13    <1e-15   0.994662    1.62661
+LivCh: 3+     1.28683    0.195078     6.60    <1e-10   0.904483    1.66918
+Urban: Y      0.680084   0.15749      4.32    <1e-04   0.371409    0.988758
+────────────────────────────────────────────────────────────────────────────
+````
+
+There is a moderate level of correlation between women
+living in the same district:
+
+````julia
 corparams(m1.model)
 ````
 
@@ -88,11 +111,12 @@ m4 = fit(GeneralizedEstimatingEquationsModel,
          con, con[:, :District],
          LogitLink(), BinomialVar(), ExchangeableCor())
 
-scoretest(m3.model, m4.model)
+st = scoretest(m3.model, m4.model)
+pvalue(st)
 ````
 
 ````
-GEE.ScoreTestResult(3, 29.733955170898643, 1.569826834191268e-6)
+1.569826834191268e-6
 ````
 
 The score test above is used to assess whether the `LivCh` variable
