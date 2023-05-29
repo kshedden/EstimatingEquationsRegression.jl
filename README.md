@@ -55,11 +55,11 @@ corparams(m2)
 The standard deviation of the unexplained variation:
 
 ````julia
-dispersion(m2.model)
+sqrt(dispersion(m2.model))
 ````
 
 ````
-31.187706203204915
+5.584595437738074
 ````
 
 Plot the fitted values with a 95% pointwise confidence band:

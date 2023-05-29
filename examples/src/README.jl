@@ -31,7 +31,7 @@ m2 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :Class],
 corparams(m2)
 
 # The standard deviation of the unexplained variation:
-dispersion(m2.model)
+sqrt(dispersion(m2.model))
 
 # Plot the fitted values with a 95% pointwise confidence band:
 x = range(extrema(da[:, :Pretot])..., 20)
