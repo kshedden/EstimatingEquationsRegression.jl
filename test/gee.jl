@@ -303,9 +303,9 @@ end
         IdentityLink(),
     )
     cst = scoretest(m, subm)
-    @test isapprox(cst.Stat, 2.01858, atol = 1e-4)
-    @test isapprox(cst.DoF, 1)
-    @test isapprox(cst.Pvalue, 0.155385, atol = 1e-5)
+    @test isapprox(cst.stat, 2.01858, atol = 1e-4)
+    @test isapprox(dof(cst), 1)
+    @test isapprox(pvalue(cst), 0.155385, atol = 1e-5)
 
     # Score test
     m = fit(
@@ -328,9 +328,9 @@ end
         IdentityLink(),
     )
     cst = scoretest(m, subm)
-    @test isapprox(cst.Stat, 2.80908, atol = 1e-4)
-    @test isapprox(cst.DoF, 2)
-    @test isapprox(cst.Pvalue, 0.24548, atol = 1e-4)
+    @test isapprox(cst.stat, 2.80908, atol = 1e-4)
+    @test isapprox(dof(cst), 2)
+    @test isapprox(pvalue(cst), 0.24548, atol = 1e-4)
 end
 
 @testset "logit/Binomial independence model" begin
@@ -374,9 +374,9 @@ end
         LogitLink(),
     )
     cst = scoretest(m, subm)
-    @test isapprox(cst.Stat, 2.53019, atol = 1e-4)
-    @test isapprox(cst.DoF, 1)
-    @test isapprox(cst.Pvalue, 0.11169, atol = 1e-5)
+    @test isapprox(cst.stat, 2.53019, atol = 1e-4)
+    @test isapprox(dof(cst), 1)
+    @test isapprox(pvalue(cst), 0.11169, atol = 1e-5)
 
     # Score test
     m = fit(
@@ -399,9 +399,9 @@ end
         LogitLink(),
     )
     cst = scoretest(m, subm)
-    @test isapprox(cst.Stat, 2.77068, atol = 1e-4)
-    @test isapprox(cst.DoF, 2)
-    @test isapprox(cst.Pvalue, 0.25024, atol = 1e-4)
+    @test isapprox(cst.stat, 2.77068, atol = 1e-4)
+    @test isapprox(dof(cst), 2)
+    @test isapprox(pvalue(cst), 0.25024, atol = 1e-4)
 end
 
 @testset "log/Poisson independence model" begin
@@ -445,9 +445,9 @@ end
         LogLink(),
     )
     cst = scoretest(m, subm)
-    @test isapprox(cst.Stat, 2.600191, atol = 1e-4)
-    @test isapprox(cst.DoF, 1)
-    @test isapprox(cst.Pvalue, 0.106851, atol = 1e-5)
+    @test isapprox(cst.stat, 2.600191, atol = 1e-4)
+    @test isapprox(dof(cst), 1)
+    @test isapprox(pvalue(cst), 0.106851, atol = 1e-5)
 
     # Score test
     m = fit(
@@ -470,9 +470,9 @@ end
         LogLink(),
     )
     cst = scoretest(m, subm)
-    @test isapprox(cst.Stat, 2.94147, atol = 1e-4)
-    @test isapprox(cst.DoF, 2)
-    @test isapprox(cst.Pvalue, 0.229757, atol = 1e-5)
+    @test isapprox(cst.stat, 2.94147, atol = 1e-4)
+    @test isapprox(dof(cst), 2)
+    @test isapprox(pvalue(cst), 0.229757, atol = 1e-5)
 end
 
 @testset "log/Gamma independence model" begin
@@ -516,9 +516,9 @@ end
         LogLink(),
     )
     cst = scoretest(m, subm)
-    @test isapprox(cst.Stat, 2.471939, atol = 1e-4)
-    @test isapprox(cst.DoF, 1)
-    @test isapprox(cst.Pvalue, 0.115895, atol = 1e-5)
+    @test isapprox(cst.stat, 2.471939, atol = 1e-4)
+    @test isapprox(dof(cst), 1)
+    @test isapprox(pvalue(cst), 0.115895, atol = 1e-5)
 
     # Acore test
     m = fit(
@@ -541,9 +541,9 @@ end
         LogLink(),
     )
     cst = scoretest(m, subm)
-    @test isapprox(cst.Stat, 2.99726, atol = 1e-4)
-    @test isapprox(cst.DoF, 2)
-    @test isapprox(cst.Pvalue, 0.223437, atol = 1e-5)
+    @test isapprox(cst.stat, 2.99726, atol = 1e-4)
+    @test isapprox(dof(cst), 2)
+    @test isapprox(pvalue(cst), 0.223437, atol = 1e-5)
 end
 
 @testset "weights" begin

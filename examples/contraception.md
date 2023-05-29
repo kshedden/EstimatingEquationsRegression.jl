@@ -92,7 +92,7 @@ scoretest(m3.model, m4.model)
 ````
 
 ````
-(DoF = 3, Stat = 29.733955170898643, Pvalue = 1.569826834191268e-6)
+GEE.ScoreTestResult(3, 29.733955170898643, 1.569826834191268e-6)
 ````
 
 The score test above is used to assess whether the `LivCh` variable

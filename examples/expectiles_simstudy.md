@@ -1,8 +1,11 @@
-#=
+```@meta
+EditURL = "<unknown>/expectiles_simstudy.jl"
+```
+
 Simulation study to assess the sampling properties of
 GEEE expectile estimation.
-=#
 
+````julia
 using GEE, StatsModels, DataFrames, LinearAlgebra, Statistics
 
 # Number of groups of correlated data
@@ -94,3 +97,27 @@ function simstudy()
 end
 
 simstudy()
+````
+
+````
+Mean of coefficients:
+[-0.2413802308128318 1.0021291111725876 -0.37072225035695583 -0.9986702622969833 -4.654797525465118e-5 1.001519580652245 -0.0022555816644241663 -0.9985059665879515 0.24305445514279447 1.0009375500032527 0.3648920314029845 -0.9979214450148914]
+
+Mean Z-scores for null coefficients:
+[-0.0028125749863164317 -0.030326031664663]
+
+SD of Z-scores for null coefficients:
+[1.0458180545298608 1.030641335147947]
+
+Mean Z-scores for non-null coefficients:
+[-2.798411761379705 54.67369216268675 -5.897615885432134 -54.78565503742246 57.80885196269524 -57.97452674482646 2.8244360344752617]
+
+SD of Z-scores for non-null coefficients:
+[1.105139405674583 2.1557462081594054 1.0014579663624599 2.34613842974393 2.0809209538107507 2.0575392039901748 1.0454037335717357]
+
+````
+
+---
+
+*This page was generated using [Literate.jl](https://github.com/fredrikekre/Literate.jl).*
+

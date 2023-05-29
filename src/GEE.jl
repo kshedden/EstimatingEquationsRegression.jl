@@ -1,6 +1,7 @@
 module GEE
 
-import StatsAPI: coef, coeftable, coefnames, vcov, stderr, dof, dof_residual, fit, predict
+import StatsAPI: coef, coeftable, coefnames, vcov, stderr, dof, dof_residual
+import StatsAPI: HypothesisTest, fit, predict, pvalue
 
 using Distributions, LinearAlgebra, DataFrames, StatsModels
 using StatsBase: CoefTable, StatisticalModel, RegressionModel
@@ -10,7 +11,7 @@ using GLM: IdentityLink, LogLink, LogitLink
 using GLM: GeneralizedLinearModel, dispersion_parameter, canonicallink
 
 # From StatsAPI
-export fit, vcov, stderr, coef, coefnames, modelmatrix, predict, coeftable
+export fit, vcov, stderr, coef, coefnames, modelmatrix, predict, coeftable, pvalue, dof
 
 export fit!, GeneralizedEstimatingEquationsModel
 export CorStruct, IndependenceCor, ExchangeableCor, OrdinalIndependenceCor, AR1Cor
