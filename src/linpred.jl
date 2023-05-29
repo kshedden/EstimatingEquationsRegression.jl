@@ -1,6 +1,6 @@
 
 
-mutable struct DensePred{T<:BlasReal} <: LinPred
+mutable struct DensePred{T<:Real} <: LinPred
 
     "`X`: the regression design matrix"
     X::Matrix{T}
@@ -24,7 +24,7 @@ mutable struct DensePred{T<:BlasReal} <: LinPred
     score_obs::Vector{T}
 end
 
-function DensePred(X::Matrix{T}, mxg::Int) where {T<:BlasReal}
+function DensePred(X::Matrix{T}, mxg::Int) where {T<:Real}
     p = size(X, 2)
     return DensePred{T}(
         X,

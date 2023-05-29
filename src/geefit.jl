@@ -1,4 +1,6 @@
-using Printf, GLM
+using Printf
+using GLM
+using Dates
 
 abstract type AbstractMarginalModel <: GLM.AbstractGLM end
 abstract type AbstractGEE <: AbstractMarginalModel end
@@ -303,7 +305,7 @@ function _fit!(
             dist
         end
 
-        gm = StatsBase.fit(
+        gm = fit(
             GeneralizedLinearModel,
             pp.X,
             y,
@@ -319,8 +321,8 @@ function _fit!(
     pp.beta0 = start
 
     n, p = size(pp.X)
-    last = false || !fitcoef || independence
-    cvg = false || !fitcoef || independence
+    last = !fitcoef || independence
+    cvg = !fitcoef || independence
 
     for iter = 1:maxiter
         _iterprep(pp, rr, qq)
@@ -335,7 +337,7 @@ function _fit!(
             break
         end
         nrm = norm(pp.delbeta)
-        verbose && println("Iteration $iter, step norm=$nrm")
+        verbose && println("$(now()): iteration $iter, step norm=$nrm")
         cvg = nrm < atol
         last = (iter == maxiter - 1) || cvg
     end
@@ -398,7 +400,7 @@ function GLM.dispersion(m::AbstractGEE)
     end
 end
 
-function StatsBase.vcov(m::AbstractGEE; cov_type::String = "")
+function vcov(m::AbstractGEE; cov_type::String = "")
     if cov_type == ""
         # Default covariance
         return m.cc.cov
@@ -416,7 +418,7 @@ function StatsBase.vcov(m::AbstractGEE; cov_type::String = "")
     end
 end
 
-function StatsBase.stderror(m::AbstractGEE; cov_type::String = "robust")::Array{Float64,1}
+function stderror(m::AbstractGEE; cov_type::String = "robust")
     v = diag(vcov(m; cov_type = cov_type))
     ii = findall((v .>= -1e-10) .& (v .<= 0))
     if length(ii) > 0
@@ -426,7 +428,7 @@ function StatsBase.stderror(m::AbstractGEE; cov_type::String = "robust")::Array{
     return sqrt.(v)
 end
 
-function StatsBase.coeftable(
+function coeftable(
     mm::GeneralizedEstimatingEquationsModel;
     level::Real = 0.95,
     cov_type::String = "",
@@ -510,7 +512,6 @@ function fit(
     d = QuasiLikelihood()
 
     X, y, wts, offset, gi, mg = prepargs(X, y, g, wts, offset)
-
     rr = GEEResp(y, gi, wts, offset)
     p = size(X, 2)
     ddof = isnothing(ddof_scale) ? p : ddof_scale
@@ -603,7 +604,7 @@ gee(F, D, args...; kwargs...) =
     fit(GeneralizedEstimatingEquationsModel, F, D, args...; kwargs...)
 
 
-function StatsBase.fit!(
+function fit!(
     m::AbstractGEE;
     verbose::Bool = false,
     maxiter::Integer = 50,
@@ -628,3 +629,8 @@ function corparams(m::AbstractGEE)
 end
 
 GLM.Link(m::GeneralizedEstimatingEquationsModel) = m.qq.link
+
+function coefnames(m::GeneralizedEstimatingEquationsModel)
+    p = size(m.pp.X, 2)
+    return ["X" * string(j) for j in 1:p]
+end

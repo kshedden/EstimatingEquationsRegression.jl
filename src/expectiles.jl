@@ -397,7 +397,7 @@ function startingvalues(pp::GEEEDensePred{T}, m::Int, y::Vector{T}) where {T<:Re
     return c
 end
 
-function StatsBase.fit!(geee::GEEE; fitargs...)
+function fit!(geee::GEEE; fitargs...)
 
     geee.beta .= startingvalues(geee.pp, length(geee.tau), geee.rr.y)
 
@@ -434,29 +434,25 @@ end
 
 geee(F, D, args...; kwargs...) = fit(GEEE, F, D, args...; kwargs...)
 
-function StatsBase.coef(m::GEEE)
+function coef(m::GEEE)
     return m.beta[:]
 end
 
-function StatsBase.vcov(m::GEEE)
+function vcov(m::GEEE)
     return m.vcov
 end
 
-function StatsBase.coefnames(
-    m::StatsModels.TableRegressionModel{GEEE{S,T},Matrix{S}},
-) where {S,T}
+function coefnames(m::StatsModels.TableRegressionModel{GEEE{S, GEE.GEEEDensePred{S}}, Matrix{S}}) where {S}
     return repeat(coefnames(m.mf), length(m.model.tau))
 end
 
-function StatsBase.coeftable(
-    m::StatsModels.TableRegressionModel{GEEE{S,T},Matrix{S}},
-) where {S,T}
+function coeftable(m::StatsModels.TableRegressionModel{GEEE{S, GEE.GEEEDensePred{S}}, Matrix{S}}) where {S}
     ct = coeftable(m.model)
     ct.rownms = coefnames(m)
     return ct
 end
 
-function StatsBase.coeftable(mm::GEEE; level::Real = 0.95)
+function coeftable(mm::GEEE; level::Real = 0.95)
     cc = coef(mm)
     se = sqrt.(diag(mm.vcov))
     zz = cc ./ se
@@ -479,7 +475,7 @@ end
 corparams(m::StatsModels.TableRegressionModel) = corparams(m.model)
 corparams(m::GEEE) = [corparams(c) for c in m.cor]
 
-function StatsBase.predict(mm::GEEE, newX::AbstractMatrix; tauj::Int = 1)
+function predict(mm::GEEE, newX::AbstractMatrix; tauj::Int = 1)
     p = mm.pp.p
     jj = p * (tauj - 1)
     cf = coef(mm)[jj+1:jj+p]
@@ -490,7 +486,7 @@ function StatsBase.predict(mm::GEEE, newX::AbstractMatrix; tauj::Int = 1)
     return (prediction = eta, lower = eta - 2 * sd, upper = eta + 2 * sd)
 end
 
-function StatsBase.predict(mm::GEEE; tauj::Int = 1)
+function predict(mm::GEEE; tauj::Int = 1)
     p = mm.pp.p
     jj = p * (tauj - 1)
     cf = coef(mm)[jj+1:jj+p]

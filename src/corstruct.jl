@@ -20,12 +20,19 @@ them, which can be estimated from the data.
 """
 mutable struct ExchangeableCor <: CorStruct
     aa::Float64
+
+    # The correlation is never allowed to exceed this value.
+    cap::Float64
 end
 
-Base.copy(c::ExchangeableCor) = ExchangeableCor(c.aa)
+Base.copy(c::ExchangeableCor) = ExchangeableCor(c.aa, c.cap)
 
 function ExchangeableCor()
-    ExchangeableCor(0.0)
+    ExchangeableCor(0.0, 0.999)
+end
+
+function ExchangeableCor(aa)
+    ExchangeableCor(aa, 0.999)
 end
 
 """
@@ -110,7 +117,7 @@ function updatecor(c::ExchangeableCor, sresid::FPVector, g::Matrix{Int}, ddof::I
     scale = ssr / (n - ddof)
     sxp /= scale
     c.aa = sxp / (npr - ddof)
-    c.aa = clamp(c.aa, 0, 0.999)
+    c.aa = clamp(c.aa, 0, c.cap)
 end
 
 function covsolve(

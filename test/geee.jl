@@ -7,6 +7,7 @@
         g = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5],
     )
     m = geee(@formula(y ~ xv1 + xv2), df, df[:, :g], [0.2, 0.5])
+    println(typeof(m))
     @test all(coefnames(m) .== ["(Intercept)", "xv1", "xv2", "(Intercept)", "xv1", "xv2"])
 end
 
@@ -19,6 +20,7 @@ end
     y = X[:, 2] + (1 .+ X[:, 3]) .* randn(rng, n)
     g = kron(1:200, ones(5))
 
+    # Check with independence working correlation
     m1 = fit(GEEE, X, y, g, [0.5])
     m2 = lm(X, y)
     @test isapprox(coef(m1), coef(m2), atol = 1e-4, rtol = 1e-4)
@@ -26,6 +28,7 @@ end
     @test isapprox(coef(m1), coef(m2), atol = 1e-4, rtol = 1e-4)
     @test isapprox(vcov(m1), vcov(m2), atol = 1e-4, rtol = 1e-4)
 
+    # Check with exchangeable working correlation
     m1 = fit(GEEE, X, y, g, [0.5], ExchangeableCor())
     m2 = fit(GeneralizedEstimatingEquationsModel, X, y, g, Normal(), ExchangeableCor())
     @test isapprox(coef(m1), coef(m2), atol = 1e-4, rtol = 1e-4)

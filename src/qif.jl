@@ -357,7 +357,7 @@ function fitbeta!(qif::QIF, start; verbose::Bool = false, g_tol = 1e-5)
     return Optim.converged(r)
 end
 
-function StatsBase.fit!(
+function fit!(
     qif::QIF;
     g_tol::Float64 = 1e-5,
     verbose::Bool = false,
@@ -442,11 +442,11 @@ See [`fit`](@ref) for documentation.
 """
 qif(F, D, args...; kwargs...) = fit(QIF, F, D, args...; kwargs...)
 
-function StatsBase.coef(m::QIF)
+function coef(m::QIF)
     return m.beta
 end
 
-function StatsBase.vcov(m::QIF)
+function vcov(m::QIF)
     p = length(m.beta)
     q = length(m.basis)
     scd = zeros(p * q, p)
@@ -455,7 +455,7 @@ function StatsBase.vcov(m::QIF)
     return inv(scd' * (m.scov \ scd)) / ngrp
 end
 
-function StatsBase.coeftable(mm::QIF; level::Real = 0.95)
+function coeftable(mm::QIF; level::Real = 0.95)
     cc = coef(mm)
     se = sqrt.(diag(vcov(mm)))
     zz = cc ./ se

@@ -1,21 +1,29 @@
 module GEE
 
-using Distributions, LinearAlgebra, StatsBase, DataFrames, StatsModels
-using LinearAlgebra: BlasReal, diag
+import StatsAPI: coef, coeftable, coefnames, vcov, stderr, dof, dof_residual, fit, predict
+
+using Distributions, LinearAlgebra, DataFrames, StatsModels
 using StatsBase: CoefTable, StatisticalModel, RegressionModel
-import StatsBase: coef, coeftable, vcov, stderr, dof, dof_residual, fit, predict
+
 using GLM: Link, LinPredModel, LinPred, ModResp, linkfun, linkinv, glmvar, mueta
 using GLM: IdentityLink, LogLink, LogitLink
 using GLM: GeneralizedLinearModel, dispersion_parameter, canonicallink
 
-export fit, fit!, GeneralizedEstimatingEquationsModel, vcov, stderr, coef
-export CorStruct, IndependenceCor, ExchangeableCor, OrdinalIndependenceCor, AR1Cor
-export corparams, dispersion, dof, scoretest, modelmatrix, gee
-export expand_ordinal, GEEE, geee, coefnames, coeftable
+# From StatsAPI
+export fit, vcov, stderr, coef, coefnames, modelmatrix, predict, coeftable
 
+export fit!, GeneralizedEstimatingEquationsModel
+export CorStruct, IndependenceCor, ExchangeableCor, OrdinalIndependenceCor, AR1Cor
+export corparams, dispersion, dof, scoretest, gee
+export expand_ordinal, GEEE, geee
+
+# GLM exports
+export IdentityLink, LogLink, LogitLink
+
+# QIF exports
 export QIF, qif, QIFBasis, QIFIdentityBasis, QIFHollowBasis, QIFSubdiagonalBasis
 
-export predict
+# Variance functions
 export Varfunc, geevar, ConstantVar, IdentityVar, BinomialVar, PowerVar
 
 const FP = AbstractFloat
@@ -29,5 +37,4 @@ include("scoretest.jl")
 include("utils.jl")
 include("expectiles.jl")
 include("qif.jl")
-#include("gee2.jl")
 end
