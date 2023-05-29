@@ -6,3 +6,5 @@ Literate.markdown("hospitalstay.jl", "..", execute=true)
 
 Literate.markdown("scoretest_simstudy.jl", "..", execute=true)
 Literate.markdown("expectiles_simstudy.jl", "..", execute=true)
+
+Literate.markdown("README.jl", "../..", execute=true)
