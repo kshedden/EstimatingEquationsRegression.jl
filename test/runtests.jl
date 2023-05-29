@@ -2,7 +2,7 @@ using Test, DataFrames, CSV, StatsBase, LinearAlgebra, Distributions
 using Printf
 using StableRNGs
 using FiniteDifferences
-using GEE, GLM, Random
+using GEEregression, GLM, Random
 using RCall
 
 function data1()
