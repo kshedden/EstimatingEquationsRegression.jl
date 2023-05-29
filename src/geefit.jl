@@ -1,6 +1,5 @@
 using Printf
 using GLM
-using Dates
 
 abstract type AbstractMarginalModel <: GLM.AbstractGLM end
 abstract type AbstractGEE <: AbstractMarginalModel end
