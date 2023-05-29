@@ -19,13 +19,21 @@ using EstimatingEquationsRegression, Random, RDatasets, StatsModels, Plots
 da = dataset("SASmixed", "SIMS")
 da = sort(da, :Class)
 f = @formula(Gain ~ Pretot)
-## m1 uses independence working correlation by default.
+
+## m1 uses an independence working correlation (by default)
 m1 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :Class])
+
+## m2 uses an exchangeable working correlation
 m2 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :Class],
          IdentityLink(), ConstantVar(), ExchangeableCor())
-corparams(m2) # within-classroom correlation
 
-# Plot the fitted values with a 95% pointwise confidence band.
+# The within-classroom correlation:
+corparams(m2)
+
+# The standard deviation of the unexplained variation:
+dispersion(m2.model)
+
+# Plot the fitted values with a 95% pointwise confidence band:
 x = range(extrema(da[:, :Pretot])..., 20)
 xm = [ones(20) x]
 se = sum((xm * vcov(m2)) .* xm, dims=2).^0.5 # standard errors
@@ -37,7 +45,7 @@ Plots.savefig(plt, "assets/readme1.svg")
 
 # ![Example plot 1](assets/readme1.svg)
 
-# See the examples in the examples folder and the unit tests in the test folder.
+# For more examples, see the examples folder and the unit tests in the test folder.
 
 # ## References
 #

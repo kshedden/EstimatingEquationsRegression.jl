@@ -19,18 +19,50 @@ using EstimatingEquationsRegression, Random, RDatasets, StatsModels, Plots
 da = dataset("SASmixed", "SIMS")
 da = sort(da, :Class)
 f = @formula(Gain ~ Pretot)
-# m1 uses independence working correlation by default.
+
+# m1 uses an independence working correlation (by default)
 m1 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :Class])
+
+# m2 uses an exchangeable working correlation
 m2 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :Class],
          IdentityLink(), ConstantVar(), ExchangeableCor())
-corparams(m2) # within-classroom correlation
+````
+
+````
+StatsModels.TableRegressionModel{EstimatingEquationsRegression.GeneralizedEstimatingEquationsModel{EstimatingEquationsRegression.GEEResp{Float64}, EstimatingEquationsRegression.DensePred{Float64}}, Matrix{Float64}}
+
+Gain ~ 1 + Pretot
+
+Coefficients:
+──────────────────────────────────────────────────────────────────────────
+                 Coef.  Std. Error       z  Pr(>|z|)  Lower 95%  Upper 95%
+──────────────────────────────────────────────────────────────────────────
+(Intercept)   6.93691    0.36197     19.16    <1e-81   6.22746    7.64636
+Pretot       -0.185577   0.0160356  -11.57    <1e-30  -0.217006  -0.154148
+──────────────────────────────────────────────────────────────────────────
+````
+
+The within-classroom correlation:
+
+````julia
+corparams(m2)
 ````
 
 ````
 0.2569238150456968
 ````
 
-Plot the fitted values with a 95% pointwise confidence band.
+The standard deviation of the unexplained variation:
+
+````julia
+dispersion(m2.model)
+````
+
+````
+31.187706203204915
+````
+
+Plot the fitted values with a 95% pointwise confidence band:
 
 ````julia
 x = range(extrema(da[:, :Pretot])..., 20)
@@ -49,7 +81,7 @@ Plots.savefig(plt, "assets/readme1.svg")
 
 ![Example plot 1](assets/readme1.svg)
 
-See the examples in the examples folder and the unit tests in the test folder.
+For more examples, see the examples folder and the unit tests in the test folder.
 
 ## References
 
