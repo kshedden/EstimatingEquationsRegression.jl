@@ -24,7 +24,7 @@ struct GEEResp{T<:Real} <: ModResp
     "`η`: the linear predictor"
     η::Vector{T}
 
-    "`mu`: the mean, use `mu` instead of `μ` for compatibility with GLM"
+    "`mu`: the mean"
     mu::Vector{T}
 
     "`resid`: residuals"
@@ -632,4 +632,38 @@ GLM.Link(m::GeneralizedEstimatingEquationsModel) = m.qq.link
 function coefnames(m::GeneralizedEstimatingEquationsModel)
     p = size(m.pp.X, 2)
     return ["X" * string(j) for j in 1:p]
+end
+
+function residuals(m::AbstractGEE)
+    return m.rr.resid
+end
+
+"""
+    resid_pearson(m::AbstractGEE)
+
+Return the Pearson residuals, which are the observed data
+minus the mean, divided by the square root of the variance
+function.  The scale parameter is not included so the Pearson
+residuals should have constant variance but not necessarily
+unit variance.
+"""
+function resid_pearson(m::AbstractGEE)
+    return m.rr.sresid
+end
+
+"""
+    predict(m::AbstractGEE; type=:linear)
+
+Return the fitted values from the fitted model.  If
+type is :linear returns the linear predictor, if
+type is :response returns the fitted mean.
+"""
+function predict(m::AbstractGEE; type=:linear)
+    if type == :linear
+        m.rr.η
+    elseif type == :response
+        m.rr.mu
+    else
+        error("Unkonwn type='$(type)' in predict")
+    end
 end
