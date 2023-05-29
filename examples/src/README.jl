@@ -14,8 +14,8 @@
 ENV["GKSwstype"] = "nul" #hide
 using EstimatingEquationsRegression, Random, RDatasets, StatsModels, Plots
 
-## Fit linear GEE models to test score data that are clustered
-# by classroom, using two different working correlation structures.
+## The example below fits linear GEE models to test score data that are clustered
+## by classroom, using two different working correlation structures.
 da = dataset("SASmixed", "SIMS")
 da = sort(da, :Class)
 f = @formula(Gain ~ Pretot)
@@ -34,6 +34,8 @@ plt = plot(x, yy; ribbon=2*se, color=:grey, xlabel="Pretot", ylabel="Gain",
            label=nothing, size=(400,300))
 plt = plot!(plt, x, yy, label=nothing)
 Plots.savefig(plt, "assets/readme1.svg")
+
+# ![Example plot 1](assets/readme1.svg)
 
 # See the examples in the examples folder and the unit tests in the test folder.
 

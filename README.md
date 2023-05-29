@@ -18,12 +18,8 @@ of heteroscedasticity.  This package currently support three methods:
 ````julia
 using EstimatingEquationsRegression, Random, RDatasets, StatsModels, Plots
 
-# Fit linear GEE models to test score data that are clustered
-````
-
-by classroom, using two different working correlation structures.
-
-````julia
+# The example below fits linear GEE models to test score data that are clustered
+# by classroom, using two different working correlation structures.
 da = dataset("SASmixed", "SIMS")
 da = sort(da, :Class)
 f = @formula(Gain ~ Pretot)
@@ -66,6 +62,8 @@ Plots.savefig(plt, "assets/readme1.svg")
 ````
 "/home/kshedden/Projects/julia/EstimatingEquationsRegression.jl/assets/readme1.svg"
 ````
+
+![Example plot 1](assets/readme1.svg)
 
 See the examples in the examples folder and the unit tests in the test folder.
 
