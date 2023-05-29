@@ -5,11 +5,11 @@
 # when the data are not independent, or when there are certain forms
 # of heteroscedasticity.  This package currently support three methods:
 #
-# * "Generalized Estimating Equations" (GEE)
+# * Generalized Estimating Equations (GEE)
 #
-# * "Quadratic Inference Functions" (QIF)
+# * Quadratic Inference Functions (QIF)
 #
-# * "Generalized Expectile Estimating Equations" (GEEE)
+# * Generalized Expectile Estimating Equations (GEEE)
 
 ENV["GKSwstype"] = "nul" #hide
 using EstimatingEquationsRegression, Random, RDatasets, StatsModels, Plots
