@@ -15,7 +15,7 @@ are collected by time, we use a first-order autoregressive working
 correlation model.
 
 ````julia
-using GEE, RDatasets, StatsModels
+using EstimatingEquationsRegression, RDatasets, StatsModels
 
 slp = dataset("lme4", "sleepstudy");
 
@@ -28,7 +28,7 @@ m1 = fit(GeneralizedEstimatingEquationsModel,
 ````
 
 ````
-StatsModels.TableRegressionModel{GeneralizedEstimatingEquationsModel{GEE.GEEResp{Float64}, GEE.DensePred{Float64}}, Matrix{Float64}}
+StatsModels.TableRegressionModel{EstimatingEquationsRegression.GeneralizedEstimatingEquationsModel{EstimatingEquationsRegression.GEEResp{Float64}, EstimatingEquationsRegression.DensePred{Float64}}, Matrix{Float64}}
 
 Reaction ~ 1 + Days
 
@@ -83,7 +83,7 @@ m2 = fit(GeneralizedEstimatingEquationsModel,
 ````
 
 ````
-StatsModels.TableRegressionModel{GeneralizedEstimatingEquationsModel{GEE.GEEResp{Float64}, GEE.DensePred{Float64}}, Matrix{Float64}}
+StatsModels.TableRegressionModel{EstimatingEquationsRegression.GeneralizedEstimatingEquationsModel{EstimatingEquationsRegression.GEEResp{Float64}, EstimatingEquationsRegression.DensePred{Float64}}, Matrix{Float64}}
 
 Reaction ~ 1 + Days
 

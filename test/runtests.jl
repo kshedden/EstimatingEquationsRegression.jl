@@ -1,8 +1,15 @@
-using Test, DataFrames, CSV, StatsBase, LinearAlgebra, Distributions
+using Test
+using DataFrames
+using CSV
+using StatsBase
+using LinearAlgebra
+using Distributions
 using Printf
 using StableRNGs
 using FiniteDifferences
-using GEEregression, GLM, Random
+using EstimatingEquationsRegression
+using GLM
+using Random
 using RCall
 
 function data1()

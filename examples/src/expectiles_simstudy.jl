@@ -1,7 +1,7 @@
 # Simulation study to assess the sampling properties of
 # GEEE expectile estimation.
 
-using GEE, StatsModels, DataFrames, LinearAlgebra, Statistics
+using EstimatingEquationsRegression, StatsModels, DataFrames, LinearAlgebra, Statistics
 
 ## Number of groups of correlated data
 ngrp = 1000

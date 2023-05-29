@@ -10,7 +10,7 @@
 # are collected by time, we use a first-order autoregressive working
 # correlation model.
 
-using GEE, RDatasets, StatsModels
+using EstimatingEquationsRegression, RDatasets, StatsModels
 
 slp = dataset("lme4", "sleepstudy");
 

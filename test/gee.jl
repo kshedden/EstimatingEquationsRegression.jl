@@ -183,7 +183,7 @@ end
 
             mat = makeAR(0.4, d)
             vi = (sm \ (mat \ (sm \ v)))
-            vi2 = GEE.covsolve(c, mu, sd, zeros(0), v)
+            vi2 = EstimatingEquationsRegression.covsolve(c, mu, sd, zeros(0), v)
             @test isapprox(vi, vi2)
 
         end
@@ -208,7 +208,7 @@ end
 
             mat = makeEx(0.4, d)
             vi = (sm \ (mat \ (sm \ v)))
-            vi2 = GEE.covsolve(c, mu, sd, zeros(0), v)
+            vi2 = EstimatingEquationsRegression.covsolve(c, mu, sd, zeros(0), v)
             @test isapprox(vi, vi2)
         end
     end
@@ -224,7 +224,7 @@ end
     sd = mu .* (1 .- mu)
     rhs = Array{Float64}(I(4))
 
-    rslt = GEE.covsolve(c, mu, sd, zeros(0), rhs)
+    rslt = EstimatingEquationsRegression.covsolve(c, mu, sd, zeros(0), rhs)
     rslt = inv(rslt)
     @test isapprox(rslt[1:2, 3:4], zeros(2, 2))
     @test isapprox(rslt, rslt')

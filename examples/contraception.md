@@ -22,7 +22,7 @@ working correlation structure, the women are modeled as being
 exchangeable within each district.
 
 ````julia
-using GEE, RDatasets, StatsModels, Distributions
+using EstimatingEquationsRegression, RDatasets, StatsModels, Distributions
 
 con = dataset("mlmRev", "Contraception")
 
@@ -48,7 +48,7 @@ m2 = fit(GeneralizedEstimatingEquationsModel,
 ````
 
 ````
-StatsModels.TableRegressionModel{GeneralizedEstimatingEquationsModel{GEE.GEEResp{Float64}, GEE.DensePred{Float64}}, Matrix{Float64}}
+StatsModels.TableRegressionModel{EstimatingEquationsRegression.GeneralizedEstimatingEquationsModel{EstimatingEquationsRegression.GEEResp{Float64}, EstimatingEquationsRegression.DensePred{Float64}}, Matrix{Float64}}
 
 Use1 ~ 1 + Age + LivCh + Urban
 

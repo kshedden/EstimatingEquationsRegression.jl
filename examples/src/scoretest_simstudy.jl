@@ -2,7 +2,7 @@
 # # that have been fit using GEE.
 
 using Distributions
-using GEE
+using EstimatingEquationsRegression
 using Statistics
 using Printf
 

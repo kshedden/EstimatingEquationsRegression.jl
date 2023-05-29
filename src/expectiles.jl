@@ -442,11 +442,11 @@ function vcov(m::GEEE)
     return m.vcov
 end
 
-function coefnames(m::StatsModels.TableRegressionModel{GEEE{S, GEE.GEEEDensePred{S}}, Matrix{S}}) where {S}
+function coefnames(m::StatsModels.TableRegressionModel{GEEE{S, GEEEDensePred{S}}, Matrix{S}}) where {S}
     return repeat(coefnames(m.mf), length(m.model.tau))
 end
 
-function coeftable(m::StatsModels.TableRegressionModel{GEEE{S, GEE.GEEEDensePred{S}}, Matrix{S}}) where {S}
+function coeftable(m::StatsModels.TableRegressionModel{GEEE{S, GEEEDensePred{S}}, Matrix{S}}) where {S}
     ct = coeftable(m.model)
     ct.rownms = coefnames(m)
     return ct
@@ -498,4 +498,4 @@ function predict(mm::GEEE; tauj::Int = 1)
     return (prediction = eta, lower = eta - 2 * sd, upper = eta + 2 * sd)
 end
 
-residuals(rr::GEE.GEEEResp) = rr.y - rr.mu
+residuals(rr::GEEEResp) = rr.y - rr.mu

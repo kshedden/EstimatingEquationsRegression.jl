@@ -19,7 +19,7 @@ by GEE do not correspond to the score function of the log-likelihood
 of the data (even when there is no dependence within clusters).
 
 ````julia
-using GEE, RDatasets, StatsModels, Plots, Loess
+using EstimatingEquationsRegression, RDatasets, StatsModels, Plots, Loess
 
 azpro = dataset("COUNT", "azpro")
 
@@ -51,7 +51,7 @@ savefig(p, "hospitalstay.svg")
 ````
 
 ````
-"/home/kshedden/Projects/julia/GEE.jl/examples/hospitalstay.svg"
+"/home/kshedden/Projects/julia/EstimatingEquationsRegression.jl/examples/hospitalstay.svg"
 ````
 
 ![Example plot 1](hospitalstay.svg)
@@ -70,7 +70,7 @@ m2 = fit(GeneralizedEstimatingEquationsModel,
 ````
 
 ````
-StatsModels.TableRegressionModel{GeneralizedEstimatingEquationsModel{GEE.GEEResp{Float64}, GEE.DensePred{Float64}}, Matrix{Float64}}
+StatsModels.TableRegressionModel{EstimatingEquationsRegression.GeneralizedEstimatingEquationsModel{EstimatingEquationsRegression.GEEResp{Float64}, EstimatingEquationsRegression.DensePred{Float64}}, Matrix{Float64}}
 
 Los ~ 1 + Procedure + Sex + Age75
 

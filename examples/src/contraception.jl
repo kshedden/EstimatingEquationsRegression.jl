@@ -17,7 +17,7 @@
 # working correlation structure, the women are modeled as being
 # exchangeable within each district.
 
-using GEE, RDatasets, StatsModels, Distributions
+using EstimatingEquationsRegression, RDatasets, StatsModels, Distributions
 
 con = dataset("mlmRev", "Contraception")
 

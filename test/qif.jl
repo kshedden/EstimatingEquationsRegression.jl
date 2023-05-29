@@ -36,17 +36,17 @@ end
 
     score = function (beta)
         m.beta .= beta
-        GEE.iterprep!(m, beta)
+        EstimatingEquationsRegression.iterprep!(m, beta)
         scr = zeros(q * length(beta))
-        GEE.score!(m, scr)
+        EstimatingEquationsRegression.score!(m, scr)
         return scr
     end
 
     jac = function (beta)
         m.beta = beta
-        GEE.iterprep!(m, beta)
+        EstimatingEquationsRegression.iterprep!(m, beta)
         scd = zeros(q * length(beta), length(beta))
-        GEE.scorederiv!(m, scd)
+        EstimatingEquationsRegression.scorederiv!(m, scd)
         return scd
     end
 
@@ -82,7 +82,7 @@ end
     for i = 1:10
         scov = randn(rng, 3 * q, 3 * q)
         scov = scov' * scov
-        fun, grad! = GEE.get_fungrad(m, scov)
+        fun, grad! = EstimatingEquationsRegression.get_fungrad(m, scov)
         beta = randn(rng, 3)
         gra = zeros(3)
         grad!(gra, beta)

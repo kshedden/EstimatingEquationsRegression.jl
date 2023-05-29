@@ -1,4 +1,4 @@
-module GEEregression
+module EstimatingEquationsRegression
 
 import StatsAPI: coef, coeftable, coefnames, vcov, stderr, dof, dof_residual
 import StatsAPI: HypothesisTest, fit, predict, pvalue, residuals

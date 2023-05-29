@@ -15,7 +15,7 @@
 # of the data (even when there is no dependence within clusters).
 
 ENV["GKSwstype"] = "nul" #hide
-using GEE, RDatasets, StatsModels, Plots, Loess
+using EstimatingEquationsRegression, RDatasets, StatsModels, Plots, Loess
 
 azpro = dataset("COUNT", "azpro")
 
