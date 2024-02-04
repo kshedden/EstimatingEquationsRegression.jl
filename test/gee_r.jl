@@ -25,7 +25,7 @@ function gendat(ngroup, gsize, p, r, rng, dist)
     elseif dist == :Poisson
         ey = exp.(0.2*lp)
         e = (ri + randn(N)) / sqrt(2)
-        u = cdf(Normal(), e)
+        u = map(Base.Fix1(cdf, Normal()), e)
         y = quantile.(Poisson.(ey), u)
     else
         error("!!")

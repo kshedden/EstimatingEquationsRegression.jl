@@ -1,16 +1,17 @@
-using Test
-using DataFrames
+using Aqua
 using CSV
-using StatsBase
-using LinearAlgebra
+using DataFrames
 using Distributions
-using Printf
-using StableRNGs
-using FiniteDifferences
 using EstimatingEquationsRegression
+using FiniteDifferences
 using GLM
+using LinearAlgebra
+using Printf
 using Random
 using RCall
+using StableRNGs
+using StatsBase
+using Test
 
 function data1()
     X = [
@@ -42,6 +43,7 @@ function save()
     CSV.write("data1.csv", da)
 end
 
+include("Aqua.jl")
 include("gee_r.jl")
 include("gee.jl")
 include("geee.jl")

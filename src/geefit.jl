@@ -664,6 +664,26 @@ function predict(m::AbstractGEE; type=:linear)
     elseif type == :response
         m.rr.mu
     else
-        error("Unkonwn type='$(type)' in predict")
+        error("Unknown type='$(type)' in predict")
     end
+end
+
+function predict(m::AbstractGEE, newX::AbstractMatrix; type=:linear, offset=nothing)
+
+    (; pp, qq) = m
+
+    lp = newX * pp.beta0
+    if !isnothing(offset)
+        lp += offset
+    end
+
+    pr = if type == :linear
+        lp
+    elseif type == :response
+        linkinv.(qq.link, lp)
+    else
+        error("Unknown type='$(type)' in predict")
+    end
+
+    return pr
 end
