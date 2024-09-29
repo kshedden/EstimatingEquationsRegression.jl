@@ -32,15 +32,7 @@ end
 
     # Without formulas
     m1 = fit(GeneralizedEstimatingEquationsModel, X, y, g, Normal(), ExchangeableCor())
-    m2 = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        IdentityLink(),
-        ConstantVar(),
-        ExchangeableCor(),
-    )
+    m2 = fit(GeneralizedEstimatingEquationsModel, X, y, g, IdentityLink(), ConstantVar(), ExchangeableCor())
     @test isapprox(coef(m1), coef(m2))
     @test isapprox(vcov(m1), vcov(m2))
     @test isapprox(corparams(m1), corparams(m2))
@@ -57,34 +49,21 @@ end
 @testset "Equivalence of distribution-based and variance function-based interfaces (Binomial/logit)" begin
 
     _, y, X, g, df = data1()
+    cs = ExchangeableCor()
 
     # Without formulas
-    m1 = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        Binomial(),
-        ExchangeableCor(),
-        LogitLink(),
-    )
-    m2 = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        LogitLink(),
-        BinomialVar(),
-        ExchangeableCor(),
-    )
+    m1 = fit(GeneralizedEstimatingEquationsModel, X, y, g, Binomial(),
+             cs, LogitLink())
+    m2 = fit(GeneralizedEstimatingEquationsModel, X, y, g, LogitLink(),
+             BinomialVar(), cs)
     @test isapprox(coef(m1), coef(m2))
     @test isapprox(vcov(m1), vcov(m2))
     @test isapprox(corparams(m1), corparams(m2))
 
     # With formulas
     f = @formula(z ~ x1 + x2 + x3)
-    m1 = gee(f, df, g, Binomial(), ExchangeableCor(), LogitLink())
-    m2 = gee(f, df, g, LogitLink(), BinomialVar(), ExchangeableCor())
+    m1 = gee(f, df, g, Binomial(), cs, LogitLink())
+    m2 = gee(f, df, g, LogitLink(), BinomialVar(), cs)
     @test isapprox(coef(m1), coef(m2))
     @test isapprox(vcov(m1), vcov(m2))
     @test isapprox(corparams(m1), corparams(m2))
@@ -96,15 +75,7 @@ end
 
     # Without formulas
     m1 = fit(GeneralizedEstimatingEquationsModel, X, y, g, Poisson(), ExchangeableCor())
-    m2 = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        LogLink(),
-        IdentityVar(),
-        ExchangeableCor(),
-    )
+    m2 = fit(GeneralizedEstimatingEquationsModel, X, y, g, LogLink(), IdentityVar(), ExchangeableCor())
     @test isapprox(coef(m1), coef(m2))
     @test isapprox(vcov(m1), vcov(m2), atol = 1e-5, rtol = 1e-5)
     @test isapprox(corparams(m1), corparams(m2))
@@ -169,7 +140,6 @@ end
 @testset "AR1 covsolve" begin
 
     Random.seed!(123)
-
     makeAR = (r, d) -> [r^abs(i - j) for i = 1:d, j = 1:d]
 
     for d in [1, 2, 4]
@@ -190,11 +160,9 @@ end
     end
 end
 
-
 @testset "Exchangeable covsolve" begin
 
     Random.seed!(123)
-
     makeEx = (r, d) -> [i == j ? 1 : r for i = 1:d, j = 1:d]
 
     for d in [1, 2, 4]
@@ -234,15 +202,7 @@ end
 @testset "linear/normal independence model" begin
 
     y, _, X, g, _ = data1()
-    m = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        Normal(),
-        IndependenceCor(),
-        IdentityLink(),
-    )
+    m = fit(GeneralizedEstimatingEquationsModel, X, y, g, Normal(), IndependenceCor(), IdentityLink())
     se = sqrt.(diag(vcov(m)))
     @test isapprox(coef(m), [0.0397, 0.7499, 0.2147], atol = 1e-4)
     @test isapprox(se, [0.089, 0.089, 0.021], atol = 1e-3)
@@ -253,15 +213,7 @@ end
     df[!, :g] = g
     df[!, :y] = y
     f = @formula(y ~ 0 + x1 + x2 + x3)
-    m1 = fit(
-        GeneralizedEstimatingEquationsModel,
-        f,
-        df,
-        g,
-        Normal(),
-        IndependenceCor(),
-        IdentityLink(),
-    )
+    m1 = fit(GeneralizedEstimatingEquationsModel, f, df, g, Normal(), IndependenceCor(), IdentityLink())
     m2 = gee(f, df, g, Normal(), IndependenceCor(), IdentityLink())
     se1 = sqrt.(diag(vcov(m1)))
     se2 = sqrt.(diag(vcov(m2)))
@@ -283,50 +235,16 @@ end
     @test isapprox(vcov(m1, cov_type = "md"), md, atol = 1e-5)
 
     # Score test
-    m = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        Normal(),
-        IndependenceCor(),
-        IdentityLink();
-        dofit = false,
-    )
-    subm = fit(
-        GeneralizedEstimatingEquationsModel,
-        X[:, [1, 2]],
-        y,
-        g,
-        Normal(),
-        IndependenceCor(),
-        IdentityLink(),
-    )
+    m = fit(GeneralizedEstimatingEquationsModel, X, y, g, Normal(), IndependenceCor(), IdentityLink(); dofit=false)
+    subm = fit(GeneralizedEstimatingEquationsModel, X[:, [1, 2]], y, g, Normal(), IndependenceCor(), IdentityLink())
     cst = scoretest(m, subm)
     @test isapprox(cst.stat, 2.01858, atol = 1e-4)
     @test isapprox(dof(cst), 1)
     @test isapprox(pvalue(cst), 0.155385, atol = 1e-5)
 
     # Score test
-    m = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        Normal(),
-        IndependenceCor(),
-        IdentityLink();
-        dofit = false,
-    )
-    subm = fit(
-        GeneralizedEstimatingEquationsModel,
-        X[:, [2]],
-        y,
-        g,
-        Normal(),
-        IndependenceCor(),
-        IdentityLink(),
-    )
+    m = fit(GeneralizedEstimatingEquationsModel, X, y, g, Normal(), IndependenceCor(), IdentityLink(); dofit=false)
+    subm = fit(GeneralizedEstimatingEquationsModel, X[:, [2]], y, g, Normal(), IndependenceCor(), IdentityLink())
     cst = scoretest(m, subm)
     @test isapprox(cst.stat, 2.80908, atol = 1e-4)
     @test isapprox(dof(cst), 2)
@@ -335,15 +253,7 @@ end
 
 @testset "logit/Binomial independence model" begin
     _, y, X, g, _ = data1()
-    m = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        Binomial(),
-        IndependenceCor(),
-        LogitLink(),
-    )
+    m = fit(GeneralizedEstimatingEquationsModel, X, y, g, Binomial(), IndependenceCor(), LogitLink())
     se = sqrt.(diag(vcov(m)))
     @test isapprox(coef(m), [0.5440, -0.2293, -0.8340], atol = 1e-4)
     @test isapprox(se, [0.121, 0.144, 0.178], atol = 1e-3)
@@ -354,50 +264,16 @@ end
     @test isapprox(coef(m), coef(m0), atol = 1e-5)
 
     # Score test
-    m = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        Binomial(),
-        IndependenceCor(),
-        LogitLink();
-        dofit = false,
-    )
-    subm = fit(
-        GeneralizedEstimatingEquationsModel,
-        X[:, [1, 2]],
-        y,
-        g,
-        Binomial(),
-        IndependenceCor(),
-        LogitLink(),
-    )
+    m = fit(GeneralizedEstimatingEquationsModel, X, y, g, Binomial(), IndependenceCor(), LogitLink(); dofit=false)
+    subm = fit(GeneralizedEstimatingEquationsModel, X[:, [1, 2]], y, g, Binomial(), IndependenceCor(), LogitLink())
     cst = scoretest(m, subm)
     @test isapprox(cst.stat, 2.53019, atol = 1e-4)
     @test isapprox(dof(cst), 1)
     @test isapprox(pvalue(cst), 0.11169, atol = 1e-5)
 
     # Score test
-    m = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        Binomial(),
-        IndependenceCor(),
-        LogitLink();
-        dofit = false,
-    )
-    subm = fit(
-        GeneralizedEstimatingEquationsModel,
-        X[:, [2]],
-        y,
-        g,
-        Binomial(),
-        IndependenceCor(),
-        LogitLink(),
-    )
+    m = fit(GeneralizedEstimatingEquationsModel, X, y, g, Binomial(), IndependenceCor(), LogitLink(); dofit=false)
+    subm = fit(GeneralizedEstimatingEquationsModel, X[:, [2]], y, g, Binomial(), IndependenceCor(), LogitLink())
     cst = scoretest(m, subm)
     @test isapprox(cst.stat, 2.77068, atol = 1e-4)
     @test isapprox(dof(cst), 2)
@@ -406,15 +282,7 @@ end
 
 @testset "log/Poisson independence model" begin
     y, _, X, g, _ = data1()
-    m = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        Poisson(),
-        IndependenceCor(),
-        LogLink(),
-    )
+    m = fit(GeneralizedEstimatingEquationsModel, X, y, g, Poisson(), IndependenceCor(), LogLink())
     se = sqrt.(diag(vcov(m)))
     @test isapprox(coef(m), [0.0051, 0.2777, 0.0580], atol = 1e-4)
     @test isapprox(se, [0.020, 0.033, 0.014], atol = 1e-3)
@@ -425,50 +293,16 @@ end
     @test isapprox(coef(m), coef(m0), atol = 1e-5)
 
     # Score test
-    m = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        Poisson(),
-        IndependenceCor(),
-        LogLink();
-        dofit = false,
-    )
-    subm = fit(
-        GeneralizedEstimatingEquationsModel,
-        X[:, [1, 2]],
-        y,
-        g,
-        Poisson(),
-        IndependenceCor(),
-        LogLink(),
-    )
+    m = fit(GeneralizedEstimatingEquationsModel, X, y, g, Poisson(), IndependenceCor(), LogLink(); dofit=false)
+    subm = fit(GeneralizedEstimatingEquationsModel, X[:, [1, 2]], y, g, Poisson(), IndependenceCor(), LogLink())
     cst = scoretest(m, subm)
     @test isapprox(cst.stat, 2.600191, atol = 1e-4)
     @test isapprox(dof(cst), 1)
     @test isapprox(pvalue(cst), 0.106851, atol = 1e-5)
 
     # Score test
-    m = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        Poisson(),
-        IndependenceCor(),
-        LogLink();
-        dofit = false,
-    )
-    subm = fit(
-        GeneralizedEstimatingEquationsModel,
-        X[:, [2]],
-        y,
-        g,
-        Poisson(),
-        IndependenceCor(),
-        LogLink(),
-    )
+    m = fit(GeneralizedEstimatingEquationsModel, X, y, g, Poisson(), IndependenceCor(), LogLink(); dofit=false)
+    subm = fit(GeneralizedEstimatingEquationsModel, X[:, [2]], y, g, Poisson(), IndependenceCor(), LogLink())
     cst = scoretest(m, subm)
     @test isapprox(cst.stat, 2.94147, atol = 1e-4)
     @test isapprox(dof(cst), 2)
@@ -477,15 +311,7 @@ end
 
 @testset "log/Gamma independence model" begin
     y, _, X, g, _ = data1()
-    m = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        Gamma(),
-        IndependenceCor(),
-        LogLink(),
-    )
+    m = fit(GeneralizedEstimatingEquationsModel, X, y, g, Gamma(), IndependenceCor(), LogLink())
     se = sqrt.(diag(vcov(m)))
     @test isapprox(coef(m), [-0.0075, 0.2875, 0.0725], atol = 1e-4)
     @test isapprox(se, [0.019, 0.034, 0.006], atol = 1e-3)
@@ -495,51 +321,17 @@ end
     m0 = glm(X, y, Gamma(), LogLink())
     @test isapprox(coef(m), coef(m0), atol = 1e-5)
 
-    # Acore test
-    m = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        Gamma(),
-        IndependenceCor(),
-        LogLink();
-        dofit = false,
-    )
-    subm = fit(
-        GeneralizedEstimatingEquationsModel,
-        X[:, [1, 2]],
-        y,
-        g,
-        Gamma(),
-        IndependenceCor(),
-        LogLink(),
-    )
+    # Score test
+    m = fit(GeneralizedEstimatingEquationsModel, X, y, g, Gamma(), IndependenceCor(), LogLink(); dofit=false)
+    subm = fit(GeneralizedEstimatingEquationsModel, X[:, [1, 2]], y, g, Gamma(), IndependenceCor(), LogLink())
     cst = scoretest(m, subm)
     @test isapprox(cst.stat, 2.471939, atol = 1e-4)
     @test isapprox(dof(cst), 1)
     @test isapprox(pvalue(cst), 0.115895, atol = 1e-5)
 
-    # Acore test
-    m = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        Gamma(),
-        IndependenceCor(),
-        LogLink();
-        dofit = false,
-    )
-    subm = fit(
-        GeneralizedEstimatingEquationsModel,
-        X[:, [2]],
-        y,
-        g,
-        Gamma(),
-        IndependenceCor(),
-        LogLink(),
-    )
+    # Score test
+    m = fit(GeneralizedEstimatingEquationsModel, X, y, g, Gamma(), IndependenceCor(), LogLink(); dofit=false)
+    subm = fit(GeneralizedEstimatingEquationsModel, X[:, [2]], y, g, Gamma(), IndependenceCor(), LogLink())
     cst = scoretest(m, subm)
     @test isapprox(cst.stat, 2.99726, atol = 1e-4)
     @test isapprox(dof(cst), 2)
@@ -567,7 +359,7 @@ end
     X1 = X[1:5, :]
     y1 = y[1:5]
     g1 = g[1:5]
-    m3 = fit(GeneralizedEstimatingEquationsModel, X1, y1, g1, Normal(), wts = wts)
+    m3 = fit(GeneralizedEstimatingEquationsModel, X1, y1, g1, Normal(), wts=wts)
     se3 = sqrt.(diag(vcov(m3)))
 
     @test isapprox(coef(m1), coef(m2))
@@ -576,20 +368,12 @@ end
     @test isapprox(se1, se3)
     @test isapprox(dispersion(m1), dispersion(m2))
     @test isapprox(dispersion(m1), dispersion(m3))
-
 end
 
 @testset "linear/normal exchangeable model" begin
 
     y, _, X, g, _ = data1()
-    m = fit(
-        GeneralizedEstimatingEquationsModel,
-        X[:, 1:1],
-        y,
-        g,
-        Normal(),
-        ExchangeableCor(),
-    )#0.4836), fitcor=false)
+    m = fit(GeneralizedEstimatingEquationsModel, X[:, 1:1], y, g, Normal(), ExchangeableCor())
     se = sqrt.(diag(vcov(m)))
     @test isapprox(coef(m), [0.2718], atol = 1e-4)
     @test isapprox(se, [0.037], atol = 1e-3)
@@ -600,15 +384,7 @@ end
     # result as fitting with the independence correlation model.
     m1 = fit(GeneralizedEstimatingEquationsModel, X, y, g, Normal(), IndependenceCor())
     se1 = sqrt.(diag(vcov(m1)))
-    m2 = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        Normal(),
-        ExchangeableCor(0),
-        fitcor = false,
-    )
+    m2 = fit(GeneralizedEstimatingEquationsModel, X, y, g, Normal(), ExchangeableCor(0), fitcor=false)
     se2 = sqrt.(diag(vcov(m2)))
 
     @test isapprox(coef(m1), coef(m2), atol = 1e-7)
@@ -616,48 +392,21 @@ end
 
     # Hold the parameters fixed at the GLM estimates, then estimate the exchangeable
     # correlation parameter.
-    m3 = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        Normal(),
-        ExchangeableCor(),
-        fitcoef = false,
-    )
+    m3 = fit(GeneralizedEstimatingEquationsModel, X, y, g, Normal(), ExchangeableCor(), fitcoef=false)
 
     @test isapprox(coef(m1), coef(m3), atol = 1e-6)
     @test isapprox(corparams(m3), 0, atol = 1e-4)
 
     # Hold the parameters fixed at zero, then estimate the exchangeable correlation parameter.
-    m4 = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        Normal(),
-        ExchangeableCor(),
-        start = [0.0, 0, 0],
-        fitcoef = false,
-    )
+    m4 = fit(GeneralizedEstimatingEquationsModel, X, y, g, Normal(), ExchangeableCor(), start=[0.0, 0, 0], fitcoef=false)
 
     @test isapprox(coef(m4), [0, 0, 0], atol = 1e-6)
     @test isapprox(corparams(m4), 0.6409037, atol = 1e-4)
-
 end
 
 @testset "log/Poisson exchangeable model" begin
     y, _, X, g, _ = data1()
-    m = fit(
-        GeneralizedEstimatingEquationsModel,
-        X[:, 1:1],
-        y,
-        g,
-        Poisson(),
-        ExchangeableCor(0),
-        LogLink(),
-        fit_cor = false,
-    )
+    m = fit(GeneralizedEstimatingEquationsModel, X[:, 1:1], y, g, Poisson(), ExchangeableCor(0), LogLink(), fit_cor=false)
     se = sqrt.(diag(vcov(m)))
     @test isapprox(coef(m), [0.1423], atol = 1e-4)
     @test isapprox(se, [0.021], atol = 1e-3)
@@ -667,15 +416,7 @@ end
 
 @testset "log/Gamma exchangeable model" begin
     y, _, X, g, _ = data1()
-    m = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        y,
-        g,
-        Gamma(),
-        ExchangeableCor(),
-        LogLink(),
-    )
+    m = fit(GeneralizedEstimatingEquationsModel, X, y, g, Gamma(), ExchangeableCor(), LogLink())
     se = sqrt.(diag(vcov(m)))
     @test isapprox(coef(m), [-0.0075, 0.2875, 0.0725], atol = 1e-4)
     @test isapprox(se, [0.019, 0.034, 0.006], atol = 1e-3)
@@ -685,15 +426,7 @@ end
 
 @testset "logit/Binomial exchangeable model" begin
     _, z, X, g, _ = data1()
-    m = fit(
-        GeneralizedEstimatingEquationsModel,
-        X,
-        z,
-        g,
-        Binomial(),
-        ExchangeableCor(),
-        LogitLink(),
-    )
+    m = fit(GeneralizedEstimatingEquationsModel, X, z, g, Binomial(), ExchangeableCor(), LogitLink())
     se = sqrt.(diag(vcov(m)))
     @test isapprox(coef(m), [0.5440, -0.2293, -0.8340], atol = 1e-4)
     @test isapprox(se, [0.121, 0.144, 0.178], atol = 1e-3)

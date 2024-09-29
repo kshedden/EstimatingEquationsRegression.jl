@@ -29,7 +29,7 @@ m2 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :Class],
 ````
 
 ````
-StatsModels.TableRegressionModel{EstimatingEquationsRegression.GeneralizedEstimatingEquationsModel{EstimatingEquationsRegression.GEEResp{Float64}, EstimatingEquationsRegression.DensePred{Float64}}, Matrix{Float64}}
+StatsModels.TableRegressionModel{GeneralizedEstimatingEquationsModel{EstimatingEquationsRegression.GEEResp{Float64}, EstimatingEquationsRegression.DensePred{Float64}}, Matrix{Float64}}
 
 Gain ~ 1 + Pretot
 

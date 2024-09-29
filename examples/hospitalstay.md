@@ -1,5 +1,5 @@
 ```@meta
-EditURL = "<unknown>/hospitalstay.jl"
+EditURL = "src/hospitalstay.jl"
 ```
 
 ## Length of hospital stay

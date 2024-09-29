@@ -158,11 +158,16 @@ function _iterprep(p::LinPred, r::GEEResp, q::GEEprop)
     # Update the raw residuals
     r.resid .= r.y .- r.mu
 
-    # The variance can be determined either by the family, or supplied directly.
     r.sd .= if typeof(q.varfunc) <: NullVar
+        # Use the GLM family to determine the variance
         glmvar.(q.dist, r.mu)
     else
+        # Use the variance function to determine the variance
         geevar.(q.varfunc, r.mu)
+    end
+    if minimum(r.sd) < 1e-10
+        @warn("Observation standard deviation is nearly zero")
+        r.sd .= clamp.(r.sd, 1e-10, Inf)
     end
     r.sd .= sqrt.(r.sd)
 
@@ -266,69 +271,69 @@ function pcov(x::Matrix)
     return Symmetric(b * diagm(a) * b'), f
 end
 
-function _fit!(
-    m::AbstractGEE,
-    verbose::Bool,
-    maxiter::Integer,
-    atol::Real,
-    rtol::Real,
-    start,
-    fitcoef::Bool,
-    fitcor::Bool,
-    bccor::Bool,
-)
+function get_start(m; maxiter=10, tol=1e-3, verbose::Bool=false)
+
+    (; pp, rr, qq, cc) = m
+    (; y, offset, wts) = rr
+    (; X) = pp
+    (; link, dist) = qq
+
+    # Weighted least squares
+    if typeof(link) <: IdentityLink
+        yy = length(offset) > 0 ? y - offset : y
+        if length(wts) > 0
+            w = Diagonal(wts)
+            par = (X' * w * X) \ (X' * w * yy)
+        else
+            par = (X' * X) \ (X' * yy)
+        end
+        return par
+    end
+
+    for iter = 1:maxiter
+        _iterprep(pp, rr, qq)
+        _iterate(pp, rr, qq, cc, false)
+        if norm(pp.score) < tol
+            break
+        end
+        if verbose
+            println("Starting values iteration=$(iter)")
+        end
+        updateβ!(pp, pp.score, cc.nacov; diagonalize=iter < 5, bclip=0.5)
+    end
+
+    return pp.beta0
+end
+
+function _fit!(m::AbstractGEE, verbose::Bool, maxiter::Integer, atol::Real, rtol::Real,
+               start, fitcoef::Bool, fitcor::Bool, bccor::Bool)
+
     m.fit && return m
 
     (; pp, rr, qq, cc) = m
+    (; score) = pp
     (; y, grpix, η, mu, sd, dμdη, viresid, resid, sresid, offset) = rr
     (; link, dist, cor, ddof) = qq
     (; scrcov, nacov) = cc
-    score = pp.score
 
     # GEE update of coef is not needed in this case
     independence = typeof(cor) <: IndependenceCor && isnothing(start)
 
-    if isnothing(start)
-        dist1 = if typeof(dist) <: QuasiLikelihood
-            # Since the GLM package does not have a quasi-likelihood interface
-            # we need to find an appropriate GLM for obtaining starting values.
-            if typeof(link) <: LogLink
-                Poisson()
-            elseif typeof(link) <: LogitLink
-                Binomial()
-            else
-                # Fallback
-                Normal()
-            end
-        else
-            dist
-        end
-
-        gm = fit(
-            GeneralizedLinearModel,
-            pp.X,
-            y,
-            dist1,
-            link;
-            offset = offset,
-            wts = m.rr.wts,
-            maxiter = 1000,
-        )
-        start = coef(gm)
-    end
-
-    pp.beta0 = start
+    pp.beta0 = isnothing(start) ? get_start(m; verbose=verbose) : copy(start)
 
     n, p = size(pp.X)
-    last = !fitcoef || independence
-    cvg = !fitcoef || independence
+    last = !fitcoef # Indicates that we are on the final iteration
+    cvg = false
 
     for iter = 1:maxiter
         _iterprep(pp, rr, qq)
         fitcor && updatecor(cor, sresid, grpix, ddof)
         _iterate(pp, rr, qq, cc, last)
 
-        fitcoef || break
+        if !fitcoef
+            # Run _iterprep and _iterate once for side effects, then exit.
+            break
+        end
 
         updateβ!(pp, score, nacov)
 
@@ -336,7 +341,7 @@ function _fit!(
             break
         end
         nrm = norm(pp.delbeta)
-        verbose && println("$(now()): iteration $iter, step norm=$nrm")
+        verbose && println("iteration $(iter), |step|=$(nrm)")
         cvg = nrm < atol
         last = (iter == maxiter - 1) || cvg
     end
@@ -356,7 +361,7 @@ function _fit!(
     if cvg
         m.converged = true
     else
-        @warn("Warning: GEE failed to converge.")
+        @warn("Warning: GEE fitting failed to converge.")
     end
 
     # The model has been fit

@@ -11,7 +11,7 @@ https://www.stata.com/manuals13/xtxtgee.pdf
 =#
 
 using StatFiles
-using GEE
+using EstimatingEquationsRegression
 using GLM
 using DataFrames
 using StatsModels
@@ -31,22 +31,9 @@ d1[!, :age] = Float64.(d1[:, :age])
 d1[:, :age2] = d1[:, :age].^2
 
 # Fit a linear model with GEE using independent working correlation.
-m1 = gee(
-    @formula(ln_wage ~ grade + age + age2),
-    d1,
-    d1[:, :idcode],
-    Normal(),
-    IndependenceCor(),
-    IdentityLink(),
-)
+m1 = gee(@formula(ln_wage ~ grade + age + age2), d1, d1[:, :idcode], Normal(), IndependenceCor(), IdentityLink())
 disp1 = dispersion(m1.model)
 
-m2 = gee(
-    @formula(ln_wage ~ grade + age + age2),
-    d1,
-    d1[:, :idcode],
-    Normal(),
-    ExchangeableCor(),
-    IdentityLink(),
-)
+# Fit a linear model with GEE using exchangeable working correlation.
+m2 = gee(@formula(ln_wage ~ grade + age + age2), d1, d1[:, :idcode], Normal(), ExchangeableCor(), IdentityLink())
 disp2 = dispersion(m2.model)

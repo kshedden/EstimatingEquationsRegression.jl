@@ -44,9 +44,24 @@ function updateη!(p::DensePred, η::FPVector, off::FPVector)
     end
 end
 
-function updateβ!(p::DensePred, numer::Array{T}, denom::Array{T}) where {T<:Real}
-    p.delbeta .= denom \ numer
-    p.beta0 .= p.beta0 + p.delbeta
+function updateβ!(p::DensePred, numer::Vector{T}, denom::Matrix{T}; diagonalize::Bool=false, bclip::Float64=-1.0) where {T<:Real}
+    if diagonalize
+        denom = Diagonal(diag(denom))
+    end
+    try
+        p.delbeta .= denom \ numer
+    catch e
+        if isa(e, SingularException)
+            @warn("Singularity encountered in updateβ!, using pseudo-inverse")
+            p.delbeta .= pinv(denom) * numer
+        else
+            throw(e)
+        end
+    end
+    if bclip >= 0
+        p.delbeta .= clamp.(p.delbeta, -bclip, bclip)
+    end
+    p.beta0 .+= p.delbeta
 end
 
 function updateD!(p::DensePred, dμdη::FPVector, i1::Int, i2::Int)

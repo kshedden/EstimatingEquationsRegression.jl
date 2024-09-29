@@ -1,6 +1,10 @@
 using LinearAlgebra: svd
 using Distributions: Chisq, cdf
 
+# Returns two matrices, qm and qc.  qm maps the parent model design matrix
+# to the submodel design matrix.  qc maps the parent model design matrix to
+# an orthogonal basis for the orthogonal complement of the submodel column
+# space in the parent model column space.
 function _score_transforms(model::AbstractGEE, submodel::AbstractGEE)
 
     xm = modelmatrix(model)
@@ -8,15 +12,17 @@ function _score_transforms(model::AbstractGEE, submodel::AbstractGEE)
 
     u, s, v = svd(xm)
 
-    # xm * qm = xs
+    # Find the matrix qm such that xm * qm = xs, i.e. that creates the
+    # submodel design matrix from the parent model design matrix.
     si = Diagonal(1 ./ s)
     qm = v * si * u' * xs
 
     # Check that submodel is actually a submodel
-    e = norm(xs - xm * qm)
-    e < 1e-8 || throw(error("scoretest submodel is not a submodel"))
+    xmq = xm * qm
+    e = norm(xs - xmq) / sqrt(norm(xs) * norm(xmq))
+    e < 1e-8 || throw("scoretest submodel is not a submodel (e=$(e))")
 
-    # Get the orthogonal complement of xs in xm.
+    # Get an orthogonal basis for the orthogonal complement of xs in xm.
     a, _, _ = svd(xs)
     a = u - a * (a' * u)
     xsc, sb, _ = svd(a)
@@ -24,13 +30,22 @@ function _score_transforms(model::AbstractGEE, submodel::AbstractGEE)
 
     qc = v * si * u' * xsc
 
-    (qm, qc)
+    return qm, qc
 end
 
 struct ScoreTestResult <: HypothesisTest
     dof::Integer
     stat::Float64
     pvalue::Float64
+end
+
+function show(io::IO, st::ScoreTestResult)
+
+    (; dof, stat, pvalue) = st
+
+    print(io, "Degrees of freedom: $(dof)")
+    print(io, "Statistic:          $(stat)")
+    print(io, "p-value:            $(pvalue)")
 end
 
 function pvalue(st::ScoreTestResult)
@@ -67,7 +82,7 @@ function scoretest(model::AbstractGEE, submodel::AbstractGEE)
     typeof(Link(model)) == typeof(Link(submodel)) ||
         throw(error("scoretest models must have same link functions"))
     typeof(Varfunc(model)) == typeof(Varfunc(submodel)) ||
-        throw(error("scoretest models must have same link functions"))
+        throw(error("scoretest models must have same variance functions"))
 
     qm, qc = _score_transforms(model, submodel)
 

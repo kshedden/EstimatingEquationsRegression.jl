@@ -120,28 +120,15 @@ function updatecor(c::ExchangeableCor, sresid::FPVector, g::Matrix{Int}, ddof::I
     c.aa = clamp(c.aa, 0, c.cap)
 end
 
-function covsolve(
-    c::IndependenceCor,
-    mu::AbstractVector{T},
-    sd::AbstractVector{T},
-    w::AbstractVector{T},
-    z::AbstractArray{T},
-) where {T<:Real}
+function covsolve(c::IndependenceCor, mu, sd, w, z)
     if length(w) > 0
-        return w .* z ./ sd .^ 2
+        return w .* z ./ sd.^2
     else
-        return z ./ sd .^ 2
+        return z ./ sd.^2
     end
 end
 
-function covsolve(
-    c::OrdinalIndependenceCor,
-    mu::AbstractVector{T},
-    sd::AbstractVector{T},
-    w::AbstractVector{T},
-    z::AbstractArray{T},
-) where {T<:Real}
-
+function covsolve(c::OrdinalIndependenceCor, mu, sd, w, z)
     p = length(mu)
     numind = c.numind
     @assert p % numind == 0
@@ -160,13 +147,7 @@ function covsolve(
     return ma \ z
 end
 
-function covsolve(
-    c::ExchangeableCor,
-    mu::AbstractVector{T},
-    sd::AbstractVector{T},
-    w::AbstractVector{T},
-    z::AbstractArray{T},
-) where {T<:Real}
+function covsolve(c::ExchangeableCor, mu, sd, w, z)
     p = length(sd)
     a = c.aa
     f = a / ((1 - a) * (1 + a * (p - 1)))
@@ -185,14 +166,7 @@ function covsolve(
     di * u
 end
 
-function covsolve(
-    c::AR1Cor,
-    mu::AbstractVector{T},
-    sd::AbstractVector{T},
-    w::AbstractVector{T},
-    z::AbstractArray{T},
-) where {T<:Real}
-
+function covsolve(c::AR1Cor, mu, sd, w, z)
     r = c.aa[1]
     d = size(z, 1)
     q = length(size(z))

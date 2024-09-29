@@ -1,5 +1,5 @@
 ```@meta
-EditURL = "<unknown>/sleepstudy.jl"
+EditURL = "src/sleepstudy.jl"
 ```
 
 ## Sleep study (linear GEE)

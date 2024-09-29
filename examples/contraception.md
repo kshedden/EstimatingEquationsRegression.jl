@@ -1,5 +1,5 @@
 ```@meta
-EditURL = "<unknown>/contraception.jl"
+EditURL = "src/contraception.jl"
 ```
 
 ## Contraception use (logistic GEE)
@@ -73,7 +73,7 @@ corparams(m1.model)
 ````
 
 ````
-0.06367178989068951
+0.06367178989068953
 ````
 
 We see that older women are less likely to use contraception than

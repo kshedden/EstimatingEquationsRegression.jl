@@ -1,32 +1,37 @@
-# # Below we use score tests to compare nested models
-# # that have been fit using GEE.
+```@meta
+EditURL = "src/scoretest_simstudy.jl"
+```
 
+# Below we use score tests to compare nested models
+# that have been fit using GEE.
+
+````julia
 using Distributions
 using EstimatingEquationsRegression
 using Statistics
 using Printf
 
-## Overall sample size
+# Overall sample size
 n = 1000
 
-## Covariates, covariate 1 is intercept, covariate 2 is the only covariate that predicts
-## the response
+# Covariates, covariate 1 is intercept, covariate 2 is the only covariate that predicts
+# the response
 p = 10
 
-## Group size
+# Group size
 m = 10
 
-## Number of groups
+# Number of groups
 q = div(n, m)
 
-## Effect size
+# Effect size
 es = 0.5
 
 function gendat(es, dist)
     X = randn(n, p)
     X[:, 1] .= 1
 
-    ## Induce correlations between the null variables and the non-null variable
+    # Induce correlations between the null variables and the non-null variable
     r = 0.5
     for k=3:p
         X[:,k] = r*X[:, 2] + sqrt(1-r^2)X[:, k]
@@ -35,11 +40,11 @@ function gendat(es, dist)
     g = kron(1:q, ones(Int, m))
     lp = es*X[:, 2]
 
-    ## Drop two null variables
+    # Drop two null variables
     ii = [i for i in 1:p if !(i in [3, 4])]
     X0 = X[:, ii]
 
-    ## Drop a non-null variable
+    # Drop a non-null variable
     ii = [i for i in 1:p if i != 2]
     X1 = X[:, ii]
 
@@ -78,11 +83,11 @@ function runsim(nrep, link, varfunc, corstruct, dist)
     for i = 1:nrep
         X, X0, X1, y, g = gendat(es, dist)
 
-        ## The null is true
+        # The null is true
         st = fitmodels(X0, X, y, g, link, varfunc, corstruct)
         push!(stats.score_null, st.stat)
 
-        ## The null is false
+        # The null is false
         st = fitmodels(X1, X, y, g, link, varfunc, corstruct)
         push!(stats.score_alt, st.stat)
     end
@@ -113,8 +118,51 @@ for (dist, link, varfunc, corstruct) in [[:Gaussian, IdentityLink(), ConstantVar
                                          [:Poisson, LogLink(), IdentityVar(), IndependenceCor()]]
     main(dist, link, varfunc, corstruct)
 end
+````
 
-# ## References
+````
+Gaussian
+Target level: 0.50
+       0.534 Level of score test under the null
+       1.000 Power of score test under the alternative
+Target level: 0.10
+       0.106 Level of score test under the null
+       1.000 Power of score test under the alternative
+Target level: 0.05
+       0.046 Level of score test under the null
+       1.000 Power of score test under the alternative
 
-# Small-sample adjustments in using the sandwich variance estimator in generalized estimating equations
-# Wei Pan, Melanie M. Wall 26 April 2002. https://doi.org/10.1002/sim.1142
+Binomial
+Target level: 0.50
+       0.474 Level of score test under the null
+       0.980 Power of score test under the alternative
+Target level: 0.10
+       0.096 Level of score test under the null
+       0.894 Power of score test under the alternative
+Target level: 0.05
+       0.046 Level of score test under the null
+       0.816 Power of score test under the alternative
+
+Poisson
+Target level: 0.50
+       0.528 Level of score test under the null
+       1.000 Power of score test under the alternative
+Target level: 0.10
+       0.112 Level of score test under the null
+       0.998 Power of score test under the alternative
+Target level: 0.05
+       0.066 Level of score test under the null
+       0.988 Power of score test under the alternative
+
+
+````
+
+## References
+
+Small-sample adjustments in using the sandwich variance estimator in generalized estimating equations
+Wei Pan, Melanie M. Wall 26 April 2002. https://doi.org/10.1002/sim.1142
+
+---
+
+*This page was generated using [Literate.jl](https://github.com/fredrikekre/Literate.jl).*
+
