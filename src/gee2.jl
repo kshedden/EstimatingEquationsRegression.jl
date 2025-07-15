@@ -153,9 +153,15 @@ function update_gee2!(gee::GeneralizedEstimatingEquations2Model; verbosity=0)
     end
 end
 
-function fit!(gee::GeneralizedEstimatingEquations2Model; maxiter=10, verbosity=0)
+function fit!(gee::GeneralizedEstimatingEquations2Model; maxiter=20, verbosity=0, eps=1e-5)
 
     (; mean_model, var_model, cor_model) = gee
+
+    converged = false
+
+    cm = zeros(size(modelmatrix(mean_model), 2))
+    cv = zeros(size(modelmatrix(var_model), 2))
+    cr = isnothing(cor_model) ? [] : zeros(size(modelmatrix(cor_model), 2))
 
     for iter in 1:maxiter
         verbosity == 0 || println("Iteration $(iter)")
@@ -172,10 +178,28 @@ function fit!(gee::GeneralizedEstimatingEquations2Model; maxiter=10, verbosity=0
             fit!(cor_model; verbosity=verbosity, bccor=false)
             verbosity <= 1 || println("  Done fitting correlation model")
         end
+
+        # Check convergence
+        if iter > 1
+            fm = norm(coef(mean_model) - cm)
+            fv = norm(coef(var_model) - cv)
+            fr = isnothing(cor_model) ? 0.0 : norm(coef(cor_model) - cr)
+            if max(fm, fv, fr) < eps
+                converged = true
+                break
+            end
+        end
+        cm = coef(mean_model)
+        cv = coef(var_model)
+        cr = isnothing(cor_model) ? [] : coef(cor_model)
+    end
+
+    if !converged && verbosity > 0
+        println("GEE2 did not converge")
     end
 
     gee.fit = true
-    gee.converged = true
+    gee.converged = converged
 end
 
 function show(io::IO, m::GeneralizedEstimatingEquations2Model)

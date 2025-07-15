@@ -1,26 +1,41 @@
 module EstimatingEquationsRegression
 
+import Base: show
 import StatsAPI: coef, coeftable, coefnames, vcov, stderr, dof, dof_residual
 import StatsAPI: HypothesisTest, fit, predict, pvalue, residuals
 
 using Distributions, LinearAlgebra, DataFrames, StatsModels
 using StatsBase: CoefTable, StatisticalModel, RegressionModel
 
-using GLM: Link, LinPredModel, LinPred, ModResp, linkfun, linkinv, glmvar, mueta
+using GLM: Link, LinPredModel, LinPred, ModResp, mueta
 using GLM: IdentityLink, LogLink, LogitLink
-using GLM: GeneralizedLinearModel, dispersion_parameter, canonicallink
+using GLM: GeneralizedLinearModel, dispersion_parameter
+
+# Need to extend these
+# TODO mueta is removed from recent GLM
+import GLM: linkfun, linkinv, mueta, canonicallink
+
+export show
 
 # From StatsAPI
 export fit, vcov, stderr, coef, coefnames, modelmatrix, predict, coeftable, pvalue
 export dof, residuals
 
-export fit!, GeneralizedEstimatingEquationsModel, resid_pearson
+# Correlation structure exports
 export CorStruct, IndependenceCor, ExchangeableCor, OrdinalIndependenceCor, AR1Cor
-export corparams, dispersion, dof, scoretest, gee
-export expand_ordinal, GEEE, geee
+
+export fit!, GeneralizedEstimatingEquationsModel, resid_pearson
+export corparams, dispersion, dof, scoretest, gee, NoDistribution
+export expand_ordinal
+
+# GEEE exports
+export GEEE, geee
+
+# GEE2 exports
+export GeneralizedEstimatingEquations2Model, SigmoidLink
 
 # GLM exports
-export IdentityLink, LogLink, LogitLink
+export IdentityLink, LogLink, LogitLink, canonicallink
 
 # QIF exports
 export QIF, qif, QIFBasis, QIFIdentityBasis, QIFHollowBasis, QIFSubdiagonalBasis
@@ -39,4 +54,6 @@ include("scoretest.jl")
 include("utils.jl")
 include("expectiles.jl")
 include("qif.jl")
+include("gee2.jl")
+
 end

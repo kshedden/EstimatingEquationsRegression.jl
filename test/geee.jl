@@ -24,13 +24,13 @@ end
     m1 = fit(GEEE, X, y, g, [0.5])
     m2 = lm(X, y)
     @test isapprox(coef(m1), coef(m2), atol = 1e-4, rtol = 1e-4)
-    m2 = fit(GeneralizedEstimatingEquationsModel, X, y, g, Normal(), IndependenceCor())
+    m2 = fit(GeneralizedEstimatingEquationsModel, X, y, g; d=Normal(), c=IndependenceCor())
     @test isapprox(coef(m1), coef(m2), atol = 1e-4, rtol = 1e-4)
     @test isapprox(vcov(m1), vcov(m2), atol = 1e-4, rtol = 1e-4)
 
     # Check with exchangeable working correlation
     m1 = fit(GEEE, X, y, g, [0.5], ExchangeableCor())
-    m2 = fit(GeneralizedEstimatingEquationsModel, X, y, g, Normal(), ExchangeableCor())
+    m2 = fit(GeneralizedEstimatingEquationsModel, X, y, g; d=Normal(), c=ExchangeableCor())
     @test isapprox(coef(m1), coef(m2), atol = 1e-4, rtol = 1e-4)
     @test isapprox(vcov(m1), vcov(m2), atol = 1e-4, rtol = 1e-4)
 end

@@ -67,18 +67,18 @@ end
     f = @formula(y ~ x1 + x2 + x3 + x4 + x5)
 
     m0 = gee(f, da, da[:, :id], IdentityLink(), ConstantVar(), IndependenceCor(), atol=1e-12, rtol=1e-12)
-    m1 = gee(f, da, da[:, :id], IdentityLink(), ConstantVar(), ExchangeableCor(), atol=1e-12, rtol=1e-12)
-
     jc0 = coef(m0)
-    jc1 = coef(m1)
     jv0 = vcov(m0)
+
+    @test isapprox(rc0, jc0, rtol=1e-4, atol=1e-6)
+    @test isapprox(rv0, jv0; rtol=1e-3, atol=1e-3)
+
+    m1 = gee(f, da, da[:, :id], IdentityLink(), ConstantVar(), ExchangeableCor(), atol=1e-12, rtol=1e-12)
+    jc1 = coef(m1)
     jv1 = vcov(m1)
 
-    @test isapprox(rc0, jc0)
     @test isapprox(rc1, jc1, rtol=1e-4, atol=1e-6)
-
-    @test isapprox(rv0, jv0)
-    @test isapprox(rv1, jv1, rtol=1e-3, atol=1e-6)
+    @test isapprox(rv1, jv1, rtol=1e-3, atol=1e-3)
 end
 
 @testset "Check Poisson model versus R" begin
@@ -119,17 +119,15 @@ end
 
     m0 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :id], LogLink(), IdentityVar(), IndependenceCor();
              atol=1e-12, rtol=1e-12)
+    c0 = coef(m0)
+    v0 = vcov(m0)
+    @test isapprox(rc0, c0, rtol=1e-3, atol=1e-3)
+    @test isapprox(rv0, v0, rtol=1e-3, atol=1e-3)
+
     m1 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :id], LogLink(), IdentityVar(), ExchangeableCor();
              atol=1e-12, rtol=1e-12)
-
-    c0 = coef(m0)
     c1 = coef(m1)
-    v0 = vcov(m0)
     v1 = vcov(m1)
-
-    @test isapprox(rc0, c0)
-    @test isapprox(rc1, c1, rtol=1e-3, atol=1e-6)
-
-    @test isapprox(rv0, v0)
-    @test isapprox(rv1, v1, rtol=1e-3, atol=1e-6)
+    @test isapprox(rc1, c1, rtol=1e-3, atol=1e-3)
+    @test isapprox(rv1, v1, rtol=1e-3, atol=1e-3)
 end

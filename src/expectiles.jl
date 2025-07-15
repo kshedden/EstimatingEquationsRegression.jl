@@ -216,7 +216,7 @@ function iterprep!(geee::GEEE, j::Int)
     geee.rr.cresidx[:, j] .= geee.rr.resid[:, j] .* geee.rr.cresid[:, j]
 
     # Update the conditional standard deviations for the j'th expectile
-    geee.rr.sd[:, j] .= sqrt.(geevar.(geee.varfunc, geee.rr.linpred[:, j]))
+    geee.rr.sd[:, j] .= sqrt.(geevar.(NoDistribution(), geee.varfunc, geee.rr.linpred[:, j]))
 end
 
 # Place the score and denominator for the jth expectile into 'scr' and 'denom'.

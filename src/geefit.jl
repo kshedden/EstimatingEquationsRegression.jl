@@ -52,19 +52,19 @@ end
 Properties that define a GLM fit using GEE - link, distribution, and
 working correlation structure.
 """
-struct GEEprop{D<:UnivariateDistribution,L<:Link,R<:CorStruct}
+struct GEEprop
 
     "`L`: the link function (maps from mean to linear predictor)"
-    link::L
+    link::Link
 
     "`varfunc`: used to determine the variance, only one of varfunc and `dist` should be specified"
     varfunc::Varfunc
 
     "`cor`: the working correlation structure"
-    cor::R
+    cor::CorStruct
 
     "`dist`: the distribution family, used only to determine the variance, not used if varfunc is provided."
-    dist::D
+    dist::UnivariateDistribution
 
     "`ddof`: adjustment to the denominator degrees of freedom for estimating
      the scale parameter, this value is subtracted from the sample size to
@@ -107,7 +107,7 @@ end
 
 
 function GEECov(p::Int)
-    GEECov(zeros(p, p), zeros(p, p), zeros(p, p), zeros(p, p), zeros(p, p), zeros(p, p))
+    GEECov(zeros(p, p), zeros(p, p), zeros(p, p), zeros(0, 0), zeros(0, 0), zeros(p, p))
 end
 
 """
@@ -125,25 +125,9 @@ mutable struct GeneralizedEstimatingEquationsModel{G<:GEEResp,L<:LinPred} <: Abs
     converged::Bool
 end
 
-function GEEResp(
-    y::Vector{T},
-    g::Matrix{Int},
-    wts::Vector{T},
-    off::Vector{T},
-) where {T<:Real}
-    return GEEResp{T}(
-        y,
-        g,
-        wts,
-        similar(y),
-        similar(y),
-        similar(y),
-        similar(y),
-        similar(y),
-        similar(y),
-        similar(y),
-        off,
-    )
+function GEEResp(y::Vector{T}, g::Matrix{Int}, wts::Vector{T}, off::Vector{T}) where {T<:Real}
+    return GEEResp{T}(y, g, wts, similar(y), similar(y), similar(y), similar(y),
+                      similar(y), similar(y), similar(y), off)
 end
 
 # Preliminary calculations for one iteration of GEE fitting.
@@ -158,13 +142,7 @@ function _iterprep(p::LinPred, r::GEEResp, q::GEEprop)
     # Update the raw residuals
     r.resid .= r.y .- r.mu
 
-    r.sd .= if typeof(q.varfunc) <: NullVar
-        # Use the GLM family to determine the variance
-        glmvar.(q.dist, r.mu)
-    else
-        # Use the variance function to determine the variance
-        geevar.(q.varfunc, r.mu)
-    end
+    r.sd .= geevar.(q.dist, q.varfunc, r.mu)
     if minimum(r.sd) < 1e-10
         @warn("Observation standard deviation is nearly zero")
         r.sd .= clamp.(r.sd, 1e-10, Inf)
@@ -225,11 +203,13 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
         vid = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], w, p.D)
         vid .= vid ./ di
 
+        # Group size
+        m = i2 - i1 + 1
+
         # This is m x m, where m is the group size.
         # It could be large.
         h = p.D * c.nacov * vid'
 
-        m = i2 - i1 + 1
         eval, evec = eigen(I(m) - h)
         if minimum(abs, eval) < 1e-14
             nfail += 1
@@ -254,8 +234,8 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
 
     bcm_md .= bcm_md ./ di^2
     bcm_kc .= bcm_kc ./ di^2
-    c.mdcov .= c.nacov * bcm_md * c.nacov
-    c.kccov .= c.nacov * bcm_kc * c.nacov
+    c.mdcov = c.nacov * bcm_md * c.nacov
+    c.kccov = c.nacov * bcm_kc * c.nacov
 
     return nfail
 end
@@ -263,7 +243,7 @@ end
 # Project x to be a positive semi-definite matrix, also return
 # a boolean indicating whether the matrix had non-negligible
 # negative eigenvalues.
-function pcov(x::Matrix)
+function pcov(x::T) where {T<:AbstractMatrix}
     x = Symmetric((x + x') / 2)
     a, b = eigen(x)
     f = minimum(a) <= -1e-8
@@ -271,7 +251,7 @@ function pcov(x::Matrix)
     return Symmetric(b * diagm(a) * b'), f
 end
 
-function get_start(m; maxiter=10, tol=1e-3, verbose::Bool=false)
+function get_start(m; maxiter=10, tol=1e-3, verbosity::Int=0)
 
     (; pp, rr, qq, cc) = m
     (; y, offset, wts) = rr
@@ -282,12 +262,15 @@ function get_start(m; maxiter=10, tol=1e-3, verbose::Bool=false)
     if typeof(link) <: IdentityLink
         yy = length(offset) > 0 ? y - offset : y
         if length(wts) > 0
-            w = Diagonal(wts)
-            par = (X' * w * X) \ (X' * w * yy)
+            W = Diagonal(wts)
+            return (X' * W * X) \ (X' * W * yy)
         else
-            par = (X' * X) \ (X' * yy)
+            return (X' * X) \ (X' * yy)
         end
-        return par
+    end
+
+    if typeof(link) <: SigmoidLink
+        return zeros(size(X, 2))
     end
 
     for iter = 1:maxiter
@@ -296,7 +279,7 @@ function get_start(m; maxiter=10, tol=1e-3, verbose::Bool=false)
         if norm(pp.score) < tol
             break
         end
-        if verbose
+        if verbosity > 2
             println("Starting values iteration=$(iter)")
         end
         updateβ!(pp, pp.score, cc.nacov; diagonalize=iter < 5, bclip=0.5)
@@ -305,7 +288,31 @@ function get_start(m; maxiter=10, tol=1e-3, verbose::Bool=false)
     return pp.beta0
 end
 
-function _fit!(m::AbstractGEE, verbose::Bool, maxiter::Integer, atol::Real, rtol::Real,
+function invert_scaling!(m)
+
+    (; pp, rr, qq, cc) = m
+    (; cov, rcov, nacov, mdcov, kccov, scrcov) = cc
+    (; xscale, beta0) = pp
+
+    if length(xscale) == 0
+        # No scaling was done
+        return
+    end
+
+    # Adjust the model parameters
+    beta0 ./= xscale[:]
+
+    # Adjust all the covariances
+    xxscale = xscale' * xscale
+    cov ./= xxscale
+    rcov ./= xxscale
+    nacov ./= xxscale
+    mdcov ./= xxscale
+    kccov ./= xxscale
+    scrcov ./= xxscale
+end
+
+function _fit!(m::AbstractGEE, verbosity::Int, maxiter::Integer, atol::Real, rtol::Real,
                start, fitcoef::Bool, fitcor::Bool, bccor::Bool)
 
     m.fit && return m
@@ -319,7 +326,10 @@ function _fit!(m::AbstractGEE, verbose::Bool, maxiter::Integer, atol::Real, rtol
     # GEE update of coef is not needed in this case
     independence = typeof(cor) <: IndependenceCor && isnothing(start)
 
-    pp.beta0 = isnothing(start) ? get_start(m; verbose=verbose) : copy(start)
+    pp.beta0 = isnothing(start) ? get_start(m; verbosity=verbosity) : copy(start)
+    if verbosity > 0
+        println("Starting values: ", pp.beta0)
+    end
 
     n, p = size(pp.X)
     last = !fitcoef # Indicates that we are on the final iteration
@@ -341,19 +351,51 @@ function _fit!(m::AbstractGEE, verbose::Bool, maxiter::Integer, atol::Real, rtol
             break
         end
         nrm = norm(pp.delbeta)
-        verbose && println("iteration $(iter), |step|=$(nrm)")
+        verbosity > 0 && println("iteration $(iter), |step|=$(nrm)")
         cvg = nrm < atol
         last = (iter == maxiter - 1) || cvg
     end
 
+    verbosity > 0 && println("completed iterations")
+
+    # The model has been fit
+    m.fit = true
+
+    nacovi = try
+        inv(nacov)
+    catch e
+        # Don't compute standard errors
+        @warn("Naive covariance matrix is singular")
+        mm = Inf * ones(size(nacov)...)
+        m.cc.nacov = mm
+        m.cc.rcov = mm
+        m.cc.mdcov = mm
+        m.cc.kccov = mm
+        m.cc.cov = mm
+        invert_scaling!(m)
+        return m
+    end
+
     # Robust covariance
-    m.cc.rcov, f = pcov(nacov \ scrcov / nacov)
+    sw = try
+        Symmetric(nacov \ scrcov / nacov)
+    catch e
+        mm = Inf * ones(size(nacov)...)
+        m.cc.rcov = mm
+        m.cc.mdcov = mm
+        m.cc.kccov = mm
+        m.cc.cov = mm
+        invert_scaling!(m)
+        return m
+    end
+    m.cc.rcov, f = pcov(sw)
     if f
         @warn("Robust covariance matrix is not positive definite.")
     end
 
     # Naive covariance
-    m.cc.nacov, f = pcov(inv(nacov) .* dispersion(m))
+    verbosity > 0 && println("Computing naive covariance")
+    m.cc.nacov, f = pcov(nacovi .* dispersion(m))
     if f
         @warn("Naive covariance matrix is not positive definite")
     end
@@ -364,13 +406,12 @@ function _fit!(m::AbstractGEE, verbose::Bool, maxiter::Integer, atol::Real, rtol
         @warn("Warning: GEE fitting failed to converge.")
     end
 
-    # The model has been fit
-    m.fit = true
-
     # Update the bias-corrected parameter covariances
+    verbosity > 0 && println("Computing dispersion")
     di = dispersion(m)
 
     if bccor
+        verbosity > 0 && println("Computing bias corrected vcov")
         nfail = _update_bc!(pp, rr, qq, cc, di)
         if nfail > 0
             @warn "Failures in $(nfail) groups when computing bias-corrected standard errors"
@@ -379,6 +420,8 @@ function _fit!(m::AbstractGEE, verbose::Bool, maxiter::Integer, atol::Real, rtol
 
     # Set the default covariance
     cc.cov = vcov(m, cov_type = qq.cov_type)
+
+    invert_scaling!(m)
 
     return m
 end
@@ -405,6 +448,7 @@ function GLM.dispersion(m::AbstractGEE)
 end
 
 function vcov(m::AbstractGEE; cov_type::String = "")
+
     if cov_type == ""
         # Default covariance
         return m.cc.cov
@@ -413,8 +457,14 @@ function vcov(m::AbstractGEE; cov_type::String = "")
     elseif cov_type == "naive"
         return m.cc.nacov
     elseif cov_type == "md"
+        if size(m.cc.mdcov, 1) == 0
+            error("Bias corrected covariance matrices not computed")
+        end
         return m.cc.mdcov
     elseif cov_type == "kc"
+        if size(m.cc.mdcov, 1) == 0
+            error("Bias corrected covariance matrices not computed")
+        end
         return m.cc.kccov
     else
         warning("Unknown cov_type '$(cov_type)'")
@@ -491,45 +541,81 @@ end
 # function not the distribution.
 struct QuasiLikelihood <: ContinuousUnivariateDistribution end
 
-"""
-    fit(GeneralizedEstimatingEquationsModel, X, y, g, l, v, [c = IndependenceCor()]; <keyword arguments>)
-
-Fit a generalized linear model to data using generalized estimating equations (GEE).  This
-interface emphasizes the "quasi-likelihood" framework for GEE and requires direct specification
-of the link and variance function, without reference to any distribution/family.
-"""
-function fit(
-    ::Type{GeneralizedEstimatingEquationsModel},
+function fit_quasi(
     X::AbstractMatrix,
     y::AbstractVector,
     g::AbstractVector,
     l::Link,
     v::Varfunc,
-    c::CorStruct = IndependenceCor();
+    c::CorStruct;
     cov_type::String = "robust",
     dofit::Bool = true,
     wts::AbstractVector{<:Real} = similar(y, 0),
     offset::AbstractVector{<:Real} = similar(y, 0),
     ddof_scale::Union{Int,Nothing} = nothing,
+    scalex::Bool=false,
+    start::Union{Nothing,Vector}=nothing,
+    fitcoef::Bool=true,
+    fitcor::Bool=true,
+    bccor::Bool=false,
     fitargs...,
 )
-    d = QuasiLikelihood()
-
     X, y, wts, offset, gi, mg = prepargs(X, y, g, wts, offset)
     rr = GEEResp(y, gi, wts, offset)
     p = size(X, 2)
     ddof = isnothing(ddof_scale) ? p : ddof_scale
     res = GeneralizedEstimatingEquationsModel(
         rr,
-        DensePred(X, mg),
-        GEEprop(l, v, c, d, ddof; cov_type),
+        DensePred(X, mg; scalex=scalex),
+        GEEprop(l, v, c, NoDistribution(), ddof; cov_type),
         GEECov(p),
         false,
         false,
     )
 
-    return dofit ? fit!(res; fitargs...) : res
+    return dofit ? fit!(res; start=start, fitcoef=fitcoef, fitcor=fitcor, bccor=bccor, fitargs...) : res
 end
+
+# Traditional GEE fitting function
+function fit_gee(
+    X::AbstractMatrix,
+    y::AbstractVector,
+    g::AbstractVector,
+    d::UnivariateDistribution,
+    c::CorStruct,
+    l::Link;
+    cov_type::String = "robust",
+    dofit::Bool = true,
+    wts::AbstractVector{<:Real} = similar(y, 0),
+    offset::AbstractVector{<:Real} = similar(y, 0),
+    ddof_scale::Union{Int,Nothing} = nothing,
+    scalex::Bool=false,
+    start::Union{Nothing,Vector}=nothing,
+    fitcoef::Bool=true,
+    fitcor::Bool=true,
+    bccor::Bool=false,
+    fitargs...,
+)
+    X, y, wts, offset, gi, mg = prepargs(X, y, g, wts, offset)
+
+    rr = GEEResp(y, gi, wts, offset)
+    p = size(X, 2)
+    ddof = isnothing(ddof_scale) ? p : ddof_scale
+    res = GeneralizedEstimatingEquationsModel(
+        rr,
+        DensePred(X, mg; scalex=scalex),
+        GEEprop(l, DefaultVar(), c, d, ddof; cov_type),
+        GEECov(p),
+        false,
+        false,
+    )
+
+    return dofit ? fit!(res; start=start, fitcoef=fitcoef, fitcor=fitcor, bccor=bccor, fitargs...) : res
+end
+
+struct NoDistribution <: ContinuousUnivariateDistribution end
+
+canonicallink(::NoDistribution) = IdentityLink()
 
 """
     fit(GeneralizedEstimatingEquationsModel, X, y, g, d, c, [l = canonicallink(d)]; <keyword arguments>)
@@ -550,7 +636,7 @@ to "robust", other options are "naive", "md" (Mancl-DeRouen debiased) and
 Can be length 0 to indicate no weighting (default).
 - `offset::Vector=similar(y,0)`: offset added to `Xβ` to form `eta`.  Can be of
 length 0
-- `verbose::Bool=false`: Display convergence information for each iteration
+- `verbosity::Int=0`: Display convergence information for each iteration
 - `maxiter::Integer=100`: Maximum number of iterations allowed to achieve convergence
 - `atol::Real=1e-6`: Convergence is achieved when the relative change in
 `β` is less than `max(rtol*dev, atol)`.
@@ -570,32 +656,37 @@ function fit(
     ::Type{GeneralizedEstimatingEquationsModel},
     X::AbstractMatrix,
     y::AbstractVector,
-    g::AbstractVector,
+    g::AbstractVector;
     d::UnivariateDistribution = Normal(),
     c::CorStruct = IndependenceCor(),
-    l::Link = canonicallink(d);
+    l::Link = canonicallink(d),
+    v::Varfunc = DefaultVar(),
     cov_type::String = "robust",
     dofit::Bool = true,
     wts::AbstractVector{<:Real} = similar(y, 0),
     offset::AbstractVector{<:Real} = similar(y, 0),
     ddof_scale::Union{Int,Nothing} = nothing,
+    scalex::Bool=false,
+    start::Union{Nothing,Vector}=nothing,
+    fitcoef::Bool=true,
+    fitcor::Bool=true,
+    bccor::Bool=false,
     fitargs...,
 )
-    X, y, wts, offset, gi, mg = prepargs(X, y, g, wts, offset)
 
-    rr = GEEResp(y, gi, wts, offset)
-    p = size(X, 2)
-    ddof = isnothing(ddof_scale) ? p : ddof_scale
-    res = GeneralizedEstimatingEquationsModel(
-        rr,
-        DensePred(X, mg),
-        GEEprop(l, NullVar(), c, d, ddof; cov_type),
-        GEECov(p),
-        false,
-        false,
-    )
+    if (typeof(d) <: NoDistribution) && (typeof(v) <: DefaultVar)
+        error("If distribution family 'd' is NoDistribution, variance function 'v' must be provided")
+    end
 
-    return dofit ? fit!(res; fitargs...) : res
+    if typeof(d) <: NoDistribution
+        return fit_quasi(X, y, g, l, v, c; cov_type=cov_type, dofit=dofit, wts=wts, offset=offset,
+                         ddof_scale=ddof_scale, scalex=scalex, start=start, fitcoef=fitcoef,
+                         fitcor=fitcor, bccor=bccor, fitargs=fitargs)
+    else
+        return fit_gee(X, y, g, d, c, l; cov_type=cov_type, dofit=dofit, wts=wts, offset=offset,
+                       ddof_scale=ddof_scale, scalex=scalex, start=start, fitcoef=fitcoef,
+                       fitcor=fitcor, bccor=bccor, fitargs=fitargs)
+    end
 end
 
 """
@@ -610,7 +701,7 @@ gee(F, D, args...; kwargs...) =
 
 function fit!(
     m::AbstractGEE;
-    verbose::Bool = false,
+    verbosity::Integer = 0,
     maxiter::Integer = 50,
     atol::Real = 1e-6,
     rtol::Real = 1e-6,
@@ -620,7 +711,7 @@ function fit!(
     bccor::Bool = true,
     kwargs...,
 )
-    _fit!(m, verbose, maxiter, atol, rtol, start, fitcoef, fitcor, bccor)
+    _fit!(m, verbosity, maxiter, atol, rtol, start, fitcoef, fitcor, bccor)
 end
 
 """

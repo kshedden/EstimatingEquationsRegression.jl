@@ -9,20 +9,29 @@ struct IdentityVar <: Varfunc end
 
 struct BinomialVar <: Varfunc end
 
-# Used when the variance is specified through a distribution/family
-# rather than an explicit variance function.
-struct NullVar <: Varfunc end
+# Use the default variance function for the family
+struct DefaultVar <: Varfunc end
 
 struct PowerVar <: Varfunc
     p::Float64
 end
 
-geevar(::ConstantVar, mu::T) where {T<:Real} = 1
-geevar(::IdentityVar, mu::T) where {T<:Real} = mu
-geevar(v::PowerVar, mu::T) where {T<:Real} = mu^v.p
-geevar(v::BinomialVar, mu::T) where {T<:Real} = mu*(1-mu)
+geevar(d::Normal, v::DefaultVar, mu::T) where {T<:Real} = 1
+geevar(d::Poisson, v::DefaultVar, mu::T) where {T<:Real} = mu
+geevar(d::Binomial, v::DefaultVar, mu::T) where {T<:Real} = mu * (1 - mu)
+geevar(d::Gamma, v::DefaultVar, mu::T) where {T<:Real} = mu^2
 
-geevarderiv(::ConstantVar, mu::T) where {T<:Real} = zero(T)
-geevarderiv(::IdentityVar, mu::T) where {T<:Real} = one(T)
-geevarderiv(v::PowerVar, mu::T) where {T<:Real} = v.p * mu^(v.p - 1)
-geevarderiv(v::BinomialVar, mu::T) where {T<:Real} = 1 - 2*mu
+geevar(::Distribution, v::ConstantVar, mu::T) where {T<:Real} = 1
+geevar(::Distribution, v::IdentityVar, mu::T) where {T<:Real} = mu
+geevar(::Distribution, v::PowerVar, mu::T) where {T<:Real} = mu^v.p
+geevar(::Distribution, v::BinomialVar, mu::T) where {T<:Real} = mu*(1-mu)
+
+geevarderiv(d::Normal, v::DefaultVar, mu::T) where {T<:Real} = zero(T)
+geevarderiv(d::Poisson, v::DefaultVar, mu::T) where {T<:Real} = one(T)
+geevarderiv(d::Binomial, v::DefaultVar, mu::T) where {T<:Real} = 1 - 2*mu
+geevarderiv(d::Gamma, v::DefaultVar, mu::T) where {T<:Real} = 2*mu
+
+geevarderiv(::Distribution, v::ConstantVar, mu::T) where {T<:Real} = zero(T)
+geevarderiv(::Distribution, v::IdentityVar, mu::T) where {T<:Real} = one(T)
+geevarderiv(::Distribution, v::PowerVar, mu::T) where {T<:Real} = v.p * mu^(v.p - 1)
+geevarderiv(::Distribution, v::BinomialVar, mu::T) where {T<:Real} = 1 - 2*mu

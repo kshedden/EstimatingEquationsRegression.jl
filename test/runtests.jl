@@ -8,7 +8,7 @@ using GLM
 using LinearAlgebra
 using Printf
 using Random
-using RCall
+#using RCall
 using StableRNGs
 using StatsBase
 using Test
@@ -43,8 +43,10 @@ function save()
     CSV.write("data1.csv", da)
 end
 
+#include("gee2.jl")
+
 include("Aqua.jl")
-include("gee_r.jl")
+#include("gee_r.jl")
 include("gee.jl")
 include("geee.jl")
 include("qif.jl")

@@ -22,19 +22,25 @@ mutable struct DensePred{T<:Real} <: LinPred
 
     "`score_obs`: the score vector for the current group"
     score_obs::Vector{T}
+
+    "`xscale`: the columns of X are scaled by these values"
+    xscale::Matrix{T}
 end
 
-function DensePred(X::Matrix{T}, mxg::Int) where {T<:Real}
+function DensePred(X::Matrix{T}, mxg::Int; scalex::Bool=false) where {T<:Real}
+
     p = size(X, 2)
-    return DensePred{T}(
-        X,
-        vec(zeros(T, p)),
-        vec(zeros(T, p)),
-        mxg,
-        zeros(0, 0),
-        zeros(p),
-        zeros(p),
-    )
+
+    if scalex
+        xscale = std(X; dims=1)
+        xscale[abs.(xscale) .< 1e-8] .= 1
+        X ./= xscale
+    else
+        xscale = zeros(0, 0)
+    end
+
+    return DensePred{T}(X, vec(zeros(T, p)), vec(zeros(T, p)), mxg, zeros(0, 0),
+                        zeros(p), zeros(p), xscale)
 end
 
 function updateη!(p::DensePred, η::FPVector, off::FPVector)
@@ -44,6 +50,9 @@ function updateη!(p::DensePred, η::FPVector, off::FPVector)
     end
 end
 
+# Update the model coefficients by taking a Gauss-Seidel step.  If `diagonalize` is true this is an approximate
+# stepoo using only the diagonal elements of the Hessian matrix.  If bclip is positive, the elements of the step vector
+# are truncated.
 function updateβ!(p::DensePred, numer::Vector{T}, denom::Matrix{T}; diagonalize::Bool=false, bclip::Float64=-1.0) where {T<:Real}
     if diagonalize
         denom = Diagonal(diag(denom))

@@ -172,7 +172,7 @@ function iterprep!(qif::QIF{T}, beta::Vector{T}) where {T<:Real}
     qif.rr.resid .= qif.rr.y - qif.rr.mu
     qif.rr.dmudeta .= mueta.(qif.link, qif.rr.eta)
     qif.rr.d2mudeta2 .= mueta2.(qif.link, qif.rr.eta)
-    qif.rr.sd .= sqrt.(geevar.(qif.varfunc, qif.rr.mu))
+    qif.rr.sd .= sqrt.(geevar.(NoDistribution(), qif.varfunc, qif.rr.mu))
     qif.rr.sresid .= qif.rr.resid ./ qif.rr.sd
 end
 
@@ -212,7 +212,7 @@ function scorederiv!(qif::QIF{T}, g::Int, scd::Matrix{T}) where {T<:Real}
     p = length(qif.beta)
     gs = i2 - i1 + 1
     sd = @view(qif.rr.sd[i1:i2])
-    vd = geevarderiv.(qif.varfunc, qif.rr.mu[i1:i2])
+    vd = geevarderiv.(NoDistribution(), qif.varfunc, qif.rr.mu[i1:i2])
     dmudeta = @view(qif.rr.dmudeta[i1:i2])
     d2mudeta2 = @view(qif.rr.d2mudeta2[i1:i2])
     sresid = @view(qif.rr.sresid[i1:i2])
