@@ -95,6 +95,9 @@ mutable struct GEECov
     "`nacov`: the naive (model-dependent) covariance matrix"
     nacov::Matrix{Float64}
 
+    "`DtViD`: the unscaled inverse of the naive (model-dependent) covariance matrix"
+    DtViD::Matrix{Float64}
+
     "`mdcov`: the Mancel-DeRouen bias-reduced robust covariance matrix"
     mdcov::Matrix{Float64}
 
@@ -107,7 +110,7 @@ end
 
 
 function GEECov(p::Int)
-    GEECov(zeros(p, p), zeros(p, p), zeros(p, p), zeros(0, 0), zeros(0, 0), zeros(p, p))
+    GEECov(zeros(p, p), zeros(p, p), zeros(p, p), zeros(p, p), zeros(0, 0), zeros(0, 0), zeros(p, p))
 end
 
 """
@@ -131,57 +134,70 @@ function GEEResp(y::Vector{T}, g::Matrix{Int}, wts::Vector{T}, off::Vector{T}) w
 end
 
 # Preliminary calculations for one iteration of GEE fitting.
-function _iterprep(p::LinPred, r::GEEResp, q::GEEprop)
+function _iterprep(mod::M) where{M<:AbstractGEE}
+
+    (; pp, rr, qq) = mod
 
     # Update the linear predictor
-    updateη!(p, r.η, r.offset)
+    updateη!(pp, rr.η, rr.offset)
 
     # Update the conditional means
-    r.mu .= linkinv.(q.link, r.η)
+    rr.mu .= linkinv.(qq.link, rr.η)
 
     # Update the raw residuals
-    r.resid .= r.y .- r.mu
+    rr.resid .= rr.y .- rr.mu
 
-    r.sd .= geevar.(q.dist, q.varfunc, r.mu)
-    if minimum(r.sd) < 1e-10
+    rr.sd .= geevar.(qq.dist, qq.varfunc, rr.mu)
+    if minimum(rr.sd) < 1e-10
         @warn("Observation standard deviation is nearly zero")
-        r.sd .= clamp.(r.sd, 1e-10, Inf)
+        rr.sd .= clamp.(rr.sd, 1e-10, Inf)
     end
-    r.sd .= sqrt.(r.sd)
+    rr.sd .= sqrt.(rr.sd)
 
     # Update the standardized residuals
-    r.sresid .= r.resid ./ r.sd
+    rr.sresid .= rr.resid ./ rr.sd
 
     # Update the derivative of the mean function with respect to the linear predictor
-    r.dμdη .= mueta.(q.link, r.η)
+    rr.dμdη .= mueta.(qq.link, rr.η)
 end
 
-function _iterate(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, last::Bool)
+function _update_group(mod::M, j::Int, last::Bool) where{M<:AbstractGEE}
 
-    p.score .= 0
-    c.nacov .= 0
-    if last
-        c.scrcov .= 0
-    end
+    (; pp, rr, qq, cc) = mod
 
-    for (g, (i1, i2)) in enumerate(eachcol(r.grpix))
-        updateD!(p, r.dμdη[i1:i2], i1, i2)
-        w = length(r.wts) > 0 ? r.wts[i1:i2] : zeros(0)
-        r.viresid[i1:i2] .= covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], w, r.resid[i1:i2])
-        p.score_obs .= p.D' * r.viresid[i1:i2]
-        p.score .+= p.score_obs
-        c.nacov .+= p.D' * covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], w, p.D)
+    i1, i2 = rr.grpix[:, j]
 
-        if last
-            # Only compute on final iteration
-            c.scrcov .+= p.score_obs * p.score_obs'
-        end
-    end
+    updateD!(pp, rr.dμdη[i1:i2], i1, i2)
+    w = length(rr.wts) > 0 ? rr.wts[i1:i2] : zeros(0)
+    rr.viresid[i1:i2] .= covsolve(qq.cor, rr.mu[i1:i2], rr.sd[i1:i2], w, rr.resid[i1:i2])
+    pp.score_obs .= pp.D' * rr.viresid[i1:i2]
+    pp.score .+= pp.score_obs
+    cc.DtViD .+= pp.D' * covsolve(qq.cor, rr.mu[i1:i2], rr.sd[i1:i2], w, pp.D)
 
     if last
-        c.scrcov .= Symmetric((c.scrcov + c.scrcov') / 2)
+        # Only compute on final iteration
+        cc.scrcov .+= pp.score_obs * pp.score_obs'
     end
-    c.nacov .= Symmetric((c.nacov + c.nacov') / 2)
+end
+
+function _iterate(mod::M, last::Bool) where{M<:AbstractGEE}
+
+    (; pp, rr, qq, cc) = mod
+
+    pp.score .= 0
+    cc.DtViD .= 0
+    if last
+        cc.scrcov .= 0
+    end
+
+    for j in 1:size(rr.grpix, 2)
+        _update_group(mod, j, last)
+    end
+
+    if last
+        cc.scrcov .= Symmetric((cc.scrcov + cc.scrcov') / 2)
+    end
+    cc.DtViD .= Symmetric((cc.DtViD + cc.DtViD') / 2)
 end
 
 # Calculate the Mancl-DeRouen and Kauermann-Carroll bias-corrected
@@ -251,9 +267,9 @@ function pcov(x::T) where {T<:AbstractMatrix}
     return Symmetric(b * diagm(a) * b'), f
 end
 
-function get_start(m; maxiter=10, tol=1e-3, verbosity::Int=0)
+function get_start(mod::M; maxiter=10, tol=1e-3, verbosity::Int=0) where{M<:AbstractGEE}
 
-    (; pp, rr, qq, cc) = m
+    (; pp, rr, qq, cc) = mod
     (; y, offset, wts) = rr
     (; X) = pp
     (; link, dist) = qq
@@ -274,15 +290,15 @@ function get_start(m; maxiter=10, tol=1e-3, verbosity::Int=0)
     end
 
     for iter = 1:maxiter
-        _iterprep(pp, rr, qq)
-        _iterate(pp, rr, qq, cc, false)
+        _iterprep(mod)
+        _iterate(mod, false)
         if norm(pp.score) < tol
             break
         end
         if verbosity > 2
             println("Starting values iteration=$(iter)")
         end
-        updateβ!(pp, pp.score, cc.nacov; diagonalize=iter < 5, bclip=0.5)
+        updateβ!(pp, pp.score, cc.DtViD; diagonalize=iter < 5, bclip=0.5)
     end
 
     return pp.beta0
@@ -312,21 +328,21 @@ function invert_scaling!(m)
     scrcov ./= xxscale
 end
 
-function _fit!(m::AbstractGEE, verbosity::Int, maxiter::Integer, atol::Real, rtol::Real,
-               start, fitcoef::Bool, fitcor::Bool, bccor::Bool)
+function _fit!(mod::M, verbosity::Int, maxiter::Integer, atol::Real, rtol::Real,
+               start, fitcoef::Bool, fitcor::Bool, bccor::Bool) where{M<:AbstractGEE}
 
-    m.fit && return m
+    mod.fit && return mod
 
-    (; pp, rr, qq, cc) = m
+    (; pp, rr, qq, cc) = mod
     (; score) = pp
     (; y, grpix, η, mu, sd, dμdη, viresid, resid, sresid, offset) = rr
     (; link, dist, cor, ddof) = qq
-    (; scrcov, nacov) = cc
+    (; scrcov, nacov, DtViD) = cc
 
     # GEE update of coef is not needed in this case
     independence = typeof(cor) <: IndependenceCor && isnothing(start)
 
-    pp.beta0 = isnothing(start) ? get_start(m; verbosity=verbosity) : copy(start)
+    pp.beta0 = isnothing(start) ? get_start(mod; verbosity=verbosity) : copy(start)
     if verbosity > 0
         println("Starting values: ", pp.beta0)
     end
@@ -336,16 +352,16 @@ function _fit!(m::AbstractGEE, verbosity::Int, maxiter::Integer, atol::Real, rto
     cvg = false
 
     for iter = 1:maxiter
-        _iterprep(pp, rr, qq)
+        _iterprep(mod)
         fitcor && updatecor(cor, sresid, grpix, ddof)
-        _iterate(pp, rr, qq, cc, last)
+        _iterate(mod, last)
 
         if !fitcoef
             # Run _iterprep and _iterate once for side effects, then exit.
             break
         end
 
-        updateβ!(pp, score, nacov)
+        updateβ!(pp, score, DtViD)
 
         if last
             break
@@ -359,56 +375,57 @@ function _fit!(m::AbstractGEE, verbosity::Int, maxiter::Integer, atol::Real, rto
     verbosity > 0 && println("completed iterations")
 
     # The model has been fit
-    m.fit = true
+    mod.fit = true
 
-    nacovi = try
-        inv(nacov)
+    nacov .= try
+        inv(DtViD)
     catch e
         # Don't compute standard errors
         @warn("Naive covariance matrix is singular")
         mm = Inf * ones(size(nacov)...)
-        m.cc.nacov = mm
-        m.cc.rcov = mm
-        m.cc.mdcov = mm
-        m.cc.kccov = mm
-        m.cc.cov = mm
-        invert_scaling!(m)
-        return m
+        mod.cc.nacov = mm
+        mod.cc.DtViD = mm
+        mod.cc.rcov = mm
+        mod.cc.mdcov = mm
+        mod.cc.kccov = mm
+        mod.cc.cov = mm
+        invert_scaling!(mod)
+        return mod
     end
 
     # Robust covariance
     sw = try
-        Symmetric(nacov \ scrcov / nacov)
+        Symmetric(DtViD \ scrcov / DtViD)
     catch e
         mm = Inf * ones(size(nacov)...)
-        m.cc.rcov = mm
-        m.cc.mdcov = mm
-        m.cc.kccov = mm
-        m.cc.cov = mm
-        invert_scaling!(m)
-        return m
+        mod.cc.rcov = mm
+        mod.cc.mdcov = mm
+        mod.cc.kccov = mm
+        mod.cc.cov = mm
+        invert_scaling!(mod)
+        return mod
     end
-    m.cc.rcov, f = pcov(sw)
+    mod.cc.rcov, f = pcov(sw)
     if f
         @warn("Robust covariance matrix is not positive definite.")
     end
 
     # Naive covariance
     verbosity > 0 && println("Computing naive covariance")
-    m.cc.nacov, f = pcov(nacovi .* dispersion(m))
+    mod.cc.nacov, f = pcov(nacov .* dispersion(mod))
     if f
         @warn("Naive covariance matrix is not positive definite")
     end
 
     if cvg
-        m.converged = true
+        mod.converged = true
     else
         @warn("Warning: GEE fitting failed to converge.")
     end
 
     # Update the bias-corrected parameter covariances
     verbosity > 0 && println("Computing dispersion")
-    di = dispersion(m)
+    di = dispersion(mod)
 
     if bccor
         verbosity > 0 && println("Computing bias corrected vcov")
@@ -419,11 +436,11 @@ function _fit!(m::AbstractGEE, verbosity::Int, maxiter::Integer, atol::Real, rto
     end
 
     # Set the default covariance
-    cc.cov = vcov(m, cov_type = qq.cov_type)
+    cc.cov = vcov(mod, cov_type = qq.cov_type)
 
-    invert_scaling!(m)
+    invert_scaling!(mod)
 
-    return m
+    return mod
 end
 
 Distributions.Distribution(q::GEEprop) = q.dist

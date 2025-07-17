@@ -3,7 +3,6 @@ using EstimatingEquationsRegression
 using Statistics
 
 rng = StableRNG(1)
-
 n = 1000
 m = 5
 N = n*m
@@ -28,3 +27,5 @@ function make_rcov(x1, x2)
 end
 
 m = fit(GeneralizedEstimatingEquations2Model, Xm, Xv, Xr, y, g, make_rcov; verbosity=2)
+
+B, M, V = vcov(m)

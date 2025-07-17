@@ -212,3 +212,108 @@ function show(io::IO, m::GeneralizedEstimatingEquations2Model)
         show(io, m.cor_model)
     end
 end
+
+# Return the triangular indices betgween j1 and j2, must match the order used in update_gee2!.
+function tri_indices(j1, j2)
+    p = j2 - j1 + 1
+    m = Int(p*(p-1)/2)
+    I1 = zeros(Int, m, 2)
+    I2 = zeros(Int, m, 2)
+    ii = 1
+
+    for i1 in j1:j2
+        for i2 in i1+1:j2
+            I1[ii, :] = [i1, i2]
+            I2[ii, :] = [i1-j1+1, i2-j1+1]
+            ii += 1
+        end
+    end
+    return I1, I2
+end
+
+function vcov(gee::GeneralizedEstimatingEquations2Model)
+
+    (; mean_model, var_model, cor_model) = gee
+
+    Xm = modelmatrix(mean_model)
+    Xv = modelmatrix(var_model)
+    Xr = isnothing(cor_model) ? zeros(0, 0) : modelmatrix(cor_model)
+
+    p, q = size(Xm, 2), size(Xv, 2)
+    r = isnothing(cor_model) ? 0 : size(Xr, 2)
+    t = p + q + r
+
+    # The bread and meat of the sandwich covariance
+    B = zeros(t, t)
+    M = zeros(t, t)
+
+    # We already have the diagonal blocks of B.
+    B[1:p, 1:p] .= mean_model.cc.DtViD
+    B[p+1:p+q, p+1:p+q] = var_model.cc.DtViD
+    if !isnothing(cor_model)
+        B[p+q+1:p+q+r, p+q+1:p+q+r] = cor_model.cc.DtViD
+    end
+
+    _iterprep(mean_model)
+    _iterprep(var_model)
+    isnothing(cor_model) && _iterprep(cor_model)
+
+    for j in 1:size(mean_model.rr.grpix, 2)
+        i1, i2 = mean_model.rr.grpix[:, j]
+        _update_group(mean_model, j, false)
+        _update_group(var_model, j, false)
+
+        w = length(mean_model.rr.wts) > 0 ? mean_model.rr.wts[i1:i2] : zeros(0)
+
+        # Update the meat for the mean and variance parameters
+        M[1:p, 1:p] .+= mean_model.pp.score_obs * mean_model.pp.score_obs'
+        M[p+1:p+q, 1:p] .+= var_model.pp.score_obs * mean_model.pp.score_obs'
+        M[p+1:p+q,p+1:p+q] .+= var_model.pp.score_obs * var_model.pp.score_obs'
+
+        # Update the bread for the mean and variance parameters
+        U = Diagonal(mean_model.rr.resid[i1:i2]) * mean_model.pp.D
+        C = covsolve(var_model.qq.cor, var_model.rr.mu[i1:i2], var_model.rr.sd[i1:i2], w, U)
+        B[p+1:p+q, 1:p] .+= -2 * var_model.pp.D' * C # Bread matrix B in Yan and Fine
+
+        if isnothing(cor_model)
+            continue
+        end
+
+        j1, j2 = cor_model.rr.grpix[:, j]
+        _update_group(cor_model, j, false)
+
+        # Update the meat for the correlation marameters
+        M[p+q+1:p+q+r, 1:p] .+= cor_model.pp.score_obs * mean_model.pp.score_obs'
+        M[p+q+1:p+q+r, p+1:p+q] .+= cor_model.pp.score_obs * var_model.pp.score_obs'
+        M[p+q+1:p+q+r, p+q+1:p+q+r] .+= cor_model.pp.score_obs * cor_model.pp.score_obs'
+
+        # Update the bread for the correlation parameters
+        ix1, ix2 = tri_indices(i1, i2)
+
+        # Bread matrix D in Yan and Fine
+        U = Diagonal(mean_model.rr.resid[ix1[:, 1]]) * mean_model.pp.D[ix2[:, 1], :]
+        U += Diagonal(mean_model.rr.resid[ix1[:, 2]]) * mean_model.pp.D[ix2[:, 2], :]
+        wr = ones(size(ix1, 1)) # TODO
+        C = covsolve(cor_model.qq.cor, cor_model.rr.mu[j1:j2], cor_model.rr.sd[j1:j2], wr, U)
+        B[p+q+1:p+q+r, 1:p] .+= cor_model.pp.D' * C
+
+        # Bread matrix E in Yan and Fine
+        U = Diagonal(mean_model.rr.resid[ix1[:, 1]]) * mean_model.pp.D[ix2[:, 1], :]
+        U += Diagonal(mean_model.rr.resid[ix1[:, 2]]) * mean_model.pp.D[ix2[:, 2], :]
+        C = covsolve(cor_model.qq.cor, cor_model.rr.mu[j1:j2], cor_model.rr.sd[j1:j2], w, U)
+        B[p+q+1:p+q+r, p+1:p+q] .+= cor_model.pp.D' * C
+    end
+
+    # Fill in the other blocks by transposing
+    M[1:p, p+1:p+q] .= M[p+1:p+q, 1:p]'
+    if !isnothing(cor_model)
+        M[1:p, p+q+1:p+q+r] .= M[p+q+1:p+q+r, 1:p]'
+        M[p+1:p+q, p+q+1:p+q+r] .= M[p+q+1:p+q+r, p+1:p+q]'
+    end
+
+    # Divide by number of groups.
+    #B ./= size(mean_model.rr.grpix, 2)
+    #M ./= size(mean_model.rr.grpix, 2)
+
+    return B, M, B \ M / B'
+end

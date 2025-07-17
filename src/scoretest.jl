@@ -93,12 +93,12 @@ function scoretest(model::AbstractGEE, submodel::AbstractGEE)
     # coefficients of the submodel
     pp, rr, qq, cc = model.pp, model.rr, model.qq, model.cc
     pp.beta0 = coef_ex
-    _iterprep(pp, rr, qq)
-    _iterate(pp, rr, qq, cc, true)
+    _iterprep(model)
+    _iterate(model, true)
     score = model.pp.score
     score2 = qc' * score
 
-    amat = cc.nacov
+    amat = cc.DtViD
     scrcov = cc.scrcov
 
     bmat11 = qm' * scrcov * qm
