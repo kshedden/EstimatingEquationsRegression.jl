@@ -1,11 +1,12 @@
 module EstimatingEquationsRegression
 
 import Base: show
-import StatsAPI: coef, coeftable, coefnames, vcov, stderr, dof, dof_residual
-import StatsAPI: HypothesisTest, fit, predict, pvalue, residuals
+import StatsAPI: coef, coeftable, coefnames, vcov, stderror, dof, dof_residual
+import StatsAPI: HypothesisTest, fit, predict, pvalue, residuals, nobs
 
 using Distributions, LinearAlgebra, DataFrames, StatsModels
 using StatsBase: CoefTable, StatisticalModel, RegressionModel
+using PrettyTables
 
 using GLM: Link, LinPredModel, LinPred, ModResp, mueta
 using GLM: IdentityLink, LogLink, LogitLink
@@ -18,8 +19,8 @@ import GLM: linkfun, linkinv, mueta, canonicallink
 export show
 
 # From StatsAPI
-export fit, vcov, stderr, coef, coefnames, modelmatrix, predict, coeftable, pvalue
-export dof, residuals
+export fit, vcov, stderror, coef, coefnames, modelmatrix, predict, coeftable, pvalue
+export dof, residuals, nobs
 
 # Correlation structure exports
 export CorStruct, IndependenceCor, ExchangeableCor, OrdinalIndependenceCor, AR1Cor

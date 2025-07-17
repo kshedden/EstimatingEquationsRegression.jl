@@ -7,12 +7,12 @@ n = 1000
 m = 5
 N = n*m
 g = repeat(1:n, inner=m)
-Xm = randn(rng, N, 3)
-beta_m = [1, 0, -1]
+Xm = randn(rng, N, 5)
+beta_m = [1, 0, -1, 0, 0]
 Ey = Xm * beta_m
-Xv = randn(rng, N, 3)
+Xv = randn(rng, N, 4)
 Xv[:, 1] .= 1
-beta_v = [-0.4, 0.5, -0.5]
+beta_v = [-0.4, 0.5, -0.5, 0.0]
 Vy = exp.(Xv * beta_v)
 
 r = 0.4
@@ -28,4 +28,4 @@ end
 
 m = fit(GeneralizedEstimatingEquations2Model, Xm, Xv, Xr, y, g, make_rcov; verbosity=2)
 
-B, M, V = vcov(m)
+V = vcov(m)

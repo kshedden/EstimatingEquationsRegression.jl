@@ -464,7 +464,7 @@ function GLM.dispersion(m::AbstractGEE)
     end
 end
 
-function vcov(m::AbstractGEE; cov_type::String = "")
+function vcov(m::GeneralizedEstimatingEquationsModel; cov_type::String = "")
 
     if cov_type == ""
         # Default covariance
@@ -497,6 +497,10 @@ function stderror(m::AbstractGEE; cov_type::String = "robust")
         @warn "Estimated parameter covariance matrix is not positive definite"
     end
     return sqrt.(v)
+end
+
+function nobs(mm::GeneralizedEstimatingEquationsModel)
+    return nobs(mm.pp)
 end
 
 function coeftable(
@@ -800,3 +804,5 @@ function predict(m::AbstractGEE, newX::AbstractMatrix; type=:linear, offset=noth
 
     return pr
 end
+
+varfunc(gee::GeneralizedEstimatingEquationsModel) = gee.qq.varfunc

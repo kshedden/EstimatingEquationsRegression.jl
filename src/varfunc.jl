@@ -35,3 +35,6 @@ geevarderiv(::Distribution, v::ConstantVar, mu::T) where {T<:Real} = zero(T)
 geevarderiv(::Distribution, v::IdentityVar, mu::T) where {T<:Real} = one(T)
 geevarderiv(::Distribution, v::PowerVar, mu::T) where {T<:Real} = v.p * mu^(v.p - 1)
 geevarderiv(::Distribution, v::BinomialVar, mu::T) where {T<:Real} = 1 - 2*mu
+
+geevar(v::Varfunc, mu::T) where {T<:Real} = geevar(NoDistribution(), v, mu)
+geevarderiv(v::Varfunc, mu::T) where {T<:Real} = geevarderiv(NoDistribution(), v, mu)

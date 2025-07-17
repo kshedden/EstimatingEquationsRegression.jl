@@ -43,6 +43,10 @@ function DensePred(X::Matrix{T}, mxg::Int; scalex::Bool=false) where {T<:Real}
                         zeros(p), zeros(p), xscale)
 end
 
+function nobs(pp::DensePred)
+    return size(pp.X, 1)
+end
+
 function updateη!(p::DensePred, η::FPVector, off::FPVector)
     η .= p.X * p.beta0
     if length(off) > 0
