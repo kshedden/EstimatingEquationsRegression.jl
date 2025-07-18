@@ -20,8 +20,8 @@ mutable struct DensePred{T<:Real} <: LinPred
     "`score`: the current score vector"
     score::Vector{T}
 
-    "`score_obs`: the score vector for the current group"
-    score_obs::Vector{T}
+    "`score_grp`: the score vector for the current group"
+    score_grp::Vector{T}
 
     "`xscale`: the columns of X are scaled by these values"
     xscale::Matrix{T}

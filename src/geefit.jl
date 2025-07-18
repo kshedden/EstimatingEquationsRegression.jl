@@ -95,8 +95,11 @@ mutable struct GEECov
     "`nacov`: the naive (model-dependent) covariance matrix"
     nacov::Matrix{Float64}
 
-    "`DtViD`: the unscaled inverse of the naive (model-dependent) covariance matrix"
-    DtViD::Matrix{Float64}
+    "`DtViD`: the unscaled inverse of the naive (model-dependent) covariance matrix for one group"
+    DtViD_grp::Matrix{Float64}
+
+    "`DtViD_sum`: the cumulative sum of DtViD"
+    DtViD_sum::Matrix{Float64}
 
     "`mdcov`: the Mancel-DeRouen bias-reduced robust covariance matrix"
     mdcov::Matrix{Float64}
@@ -110,7 +113,7 @@ end
 
 
 function GEECov(p::Int)
-    GEECov(zeros(p, p), zeros(p, p), zeros(p, p), zeros(p, p), zeros(0, 0), zeros(0, 0), zeros(p, p))
+    GEECov(zeros(p, p), zeros(p, p), zeros(p, p), zeros(p, p), zeros(p, p), zeros(0, 0), zeros(0, 0), zeros(p, p))
 end
 
 """
@@ -136,7 +139,7 @@ end
 # Preliminary calculations for one iteration of GEE fitting.
 function _iterprep(mod::M) where{M<:AbstractGEE}
 
-    (; pp, rr, qq) = mod
+    (; pp, rr, qq, cc) = mod
 
     # Update the linear predictor
     updateη!(pp, rr.η, rr.offset)
@@ -159,6 +162,10 @@ function _iterprep(mod::M) where{M<:AbstractGEE}
 
     # Update the derivative of the mean function with respect to the linear predictor
     rr.dμdη .= mueta.(qq.link, rr.η)
+
+    cc.DtViD_sum .= 0
+    pp.score .= 0
+    cc.scrcov .= 0
 end
 
 function _update_group(mod::M, j::Int, last::Bool) where{M<:AbstractGEE}
@@ -170,13 +177,14 @@ function _update_group(mod::M, j::Int, last::Bool) where{M<:AbstractGEE}
     updateD!(pp, rr.dμdη[i1:i2], i1, i2)
     w = length(rr.wts) > 0 ? rr.wts[i1:i2] : zeros(0)
     rr.viresid[i1:i2] .= covsolve(qq.cor, rr.mu[i1:i2], rr.sd[i1:i2], w, rr.resid[i1:i2])
-    pp.score_obs .= pp.D' * rr.viresid[i1:i2]
-    pp.score .+= pp.score_obs
-    cc.DtViD .+= pp.D' * covsolve(qq.cor, rr.mu[i1:i2], rr.sd[i1:i2], w, pp.D)
+    pp.score_grp .= pp.D' * rr.viresid[i1:i2]
+    pp.score .+= pp.score_grp
+    cc.DtViD_grp .= pp.D' * covsolve(qq.cor, rr.mu[i1:i2], rr.sd[i1:i2], w, pp.D)
+    cc.DtViD_sum .+= cc.DtViD_grp
 
     if last
         # Only compute on final iteration
-        cc.scrcov .+= pp.score_obs * pp.score_obs'
+        cc.scrcov .+= pp.score_grp * pp.score_grp'
     end
 end
 
@@ -185,7 +193,7 @@ function _iterate(mod::M, last::Bool) where{M<:AbstractGEE}
     (; pp, rr, qq, cc) = mod
 
     pp.score .= 0
-    cc.DtViD .= 0
+    cc.DtViD_sum .= 0
     if last
         cc.scrcov .= 0
     end
@@ -197,7 +205,7 @@ function _iterate(mod::M, last::Bool) where{M<:AbstractGEE}
     if last
         cc.scrcov .= Symmetric((cc.scrcov + cc.scrcov') / 2)
     end
-    cc.DtViD .= Symmetric((cc.DtViD + cc.DtViD') / 2)
+    cc.DtViD_sum .= Symmetric((cc.DtViD_sum + cc.DtViD_sum') / 2)
 end
 
 # Calculate the Mancl-DeRouen and Kauermann-Carroll bias-corrected
@@ -298,7 +306,7 @@ function get_start(mod::M; maxiter=10, tol=1e-3, verbosity::Int=0) where{M<:Abst
         if verbosity > 2
             println("Starting values iteration=$(iter)")
         end
-        updateβ!(pp, pp.score, cc.DtViD; diagonalize=iter < 5, bclip=0.5)
+        updateβ!(pp, pp.score, cc.DtViD_sum; diagonalize=iter < 5, bclip=0.5)
     end
 
     return pp.beta0
@@ -337,7 +345,7 @@ function _fit!(mod::M, verbosity::Int, maxiter::Integer, atol::Real, rtol::Real,
     (; score) = pp
     (; y, grpix, η, mu, sd, dμdη, viresid, resid, sresid, offset) = rr
     (; link, dist, cor, ddof) = qq
-    (; scrcov, nacov, DtViD) = cc
+    (; scrcov, nacov, DtViD_sum, DtViD_grp) = cc
 
     # GEE update of coef is not needed in this case
     independence = typeof(cor) <: IndependenceCor && isnothing(start)
@@ -361,7 +369,7 @@ function _fit!(mod::M, verbosity::Int, maxiter::Integer, atol::Real, rtol::Real,
             break
         end
 
-        updateβ!(pp, score, DtViD)
+        updateβ!(pp, score, DtViD_sum)
 
         if last
             break
@@ -378,13 +386,13 @@ function _fit!(mod::M, verbosity::Int, maxiter::Integer, atol::Real, rtol::Real,
     mod.fit = true
 
     nacov .= try
-        inv(DtViD)
+        inv(DtViD_sum)
     catch e
         # Don't compute standard errors
         @warn("Naive covariance matrix is singular")
         mm = Inf * ones(size(nacov)...)
         mod.cc.nacov = mm
-        mod.cc.DtViD = mm
+        mod.cc.DtViD_sum = mm
         mod.cc.rcov = mm
         mod.cc.mdcov = mm
         mod.cc.kccov = mm
@@ -395,7 +403,7 @@ function _fit!(mod::M, verbosity::Int, maxiter::Integer, atol::Real, rtol::Real,
 
     # Robust covariance
     sw = try
-        Symmetric(DtViD \ scrcov / DtViD)
+        Symmetric(DtViD_sum \ scrcov / DtViD_sum)
     catch e
         mm = Inf * ones(size(nacov)...)
         mod.cc.rcov = mm
@@ -670,7 +678,7 @@ or to `start` if provided, and update the correlation parameters and dispersion 
 using GEE iterations to update the coefficients.`
 - `fitcor::Bool=true`: If false, hold the correlation parameters equal to their starting
 values.
-- `bccor::Bool=true`: If false, do not compute the Kauermann-Carroll and Mancel-DeRouen
+- `bccor::Bool=false`: If false, do not compute the Kauermann-Carroll and Mancel-DeRouen
 covariances.
 """
 function fit(
@@ -729,7 +737,7 @@ function fit!(
     start = nothing,
     fitcoef::Bool = true,
     fitcor::Bool = true,
-    bccor::Bool = true,
+    bccor::Bool = false,
     kwargs...,
 )
     _fit!(m, verbosity, maxiter, atol, rtol, start, fitcoef, fitcor, bccor)

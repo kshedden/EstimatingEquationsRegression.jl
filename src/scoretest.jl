@@ -98,7 +98,7 @@ function scoretest(model::AbstractGEE, submodel::AbstractGEE)
     score = model.pp.score
     score2 = qc' * score
 
-    amat = cc.DtViD
+    amat = cc.DtViD_sum
     scrcov = cc.scrcov
 
     bmat11 = qm' * scrcov * qm

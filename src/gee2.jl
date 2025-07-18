@@ -104,7 +104,7 @@ end
 function fit(::Type{GeneralizedEstimatingEquations2Model}, Xm::AbstractMatrix, Xv::AbstractMatrix, Xr::Union{Nothing,AbstractMatrix},
                                               y::AbstractVector, g::AbstractVector, make_rcov;
                                               link_mean=IdentityLink(), varfunc_mean=ConstantVar(), corstruct_mean=IndependenceCor(),
-                                              link_scale=LogLink(), varfunc_scale=IdentityVar(), corstruct_scale=IndependenceCor(),
+                                              link_scale=LogLink(), varfunc_scale=PowerVar(2), corstruct_scale=IndependenceCor(),
                                               link_cor=SigmoidLink(-1, 1), varfunc_cor=ConstantVar(), corstruct_cor=IndependenceCor(), dofit=true,
                                               verbosity=0, maxiter=10)
 
@@ -260,15 +260,17 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
     M = zeros(t, t)
 
     # We already have the diagonal blocks of B.
-    B[1:p, 1:p] .= mean_model.cc.DtViD
-    B[p+1:p+q, p+1:p+q] = scale_model.cc.DtViD
+    B[1:p, 1:p] .= mean_model.cc.DtViD_sum
+    B[p+1:p+q, p+1:p+q] = scale_model.cc.DtViD_sum
     if !isnothing(cor_model)
-        B[p+q+1:p+q+r, p+q+1:p+q+r] = cor_model.cc.DtViD
+        B[p+q+1:p+q+r, p+q+1:p+q+r] = cor_model.cc.DtViD_sum
     end
 
     _iterprep(mean_model)
     _iterprep(scale_model)
-    isnothing(cor_model) && _iterprep(cor_model)
+    if !isnothing(cor_model)
+        _iterprep(cor_model)
+    end
 
     for j in 1:size(mean_model.rr.grpix, 2)
         i1, i2 = mean_model.rr.grpix[:, j]
@@ -277,9 +279,9 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
         w = length(mean_model.rr.wts) > 0 ? mean_model.rr.wts[i1:i2] : zeros(0)
 
         # Update the meat for the mean and variance parameters
-        M[1:p, 1:p] .+= mean_model.pp.score_obs * mean_model.pp.score_obs'
-        M[p+1:p+q, 1:p] .+= scale_model.pp.score_obs * mean_model.pp.score_obs'
-        M[p+1:p+q,p+1:p+q] .+= scale_model.pp.score_obs * scale_model.pp.score_obs'
+        M[1:p, 1:p] .+= mean_model.pp.score_grp * mean_model.pp.score_grp'
+        M[p+1:p+q, 1:p] .+= scale_model.pp.score_grp * mean_model.pp.score_grp'
+        M[p+1:p+q,p+1:p+q] .+= scale_model.pp.score_grp * scale_model.pp.score_grp'
 
         # Update the bread for the mean and variance parameters
         # This is the B matrix of Yan and Fine
@@ -297,9 +299,9 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
         _update_group(cor_model, j, false)
 
         # Update the meat for the correlation marameters
-        M[p+q+1:p+q+r, 1:p] .+= cor_model.pp.score_obs * mean_model.pp.score_obs'
-        M[p+q+1:p+q+r, p+1:p+q] .+= cor_model.pp.score_obs * scale_model.pp.score_obs'
-        M[p+q+1:p+q+r, p+q+1:p+q+r] .+= cor_model.pp.score_obs * cor_model.pp.score_obs'
+        M[p+q+1:p+q+r, 1:p] .+= cor_model.pp.score_grp * mean_model.pp.score_grp'
+        M[p+q+1:p+q+r, p+1:p+q] .+= cor_model.pp.score_grp * scale_model.pp.score_grp'
+        M[p+q+1:p+q+r, p+q+1:p+q+r] .+= cor_model.pp.score_grp * cor_model.pp.score_grp'
 
         # Update the bread for the correlation parameters
         ix1, ix2 = tri_indices(i1, i2)
