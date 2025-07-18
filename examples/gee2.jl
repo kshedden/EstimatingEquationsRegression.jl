@@ -11,11 +11,11 @@ r = 0.5
 g = repeat(1:n, inner=m)
 Xm = randn(rng, N, 5)
 beta_m = [1, 0, -1, 0, 0]
-Ey = Xm * beta_m
+Ey = exp.(Xm * beta_m)
 Xv = randn(rng, N, 4)
 Xv[:, 1] .= 1
 beta_v = [-0.4, 0.5, -0.5, 0.0]
-Vy = exp.(Xv * beta_v)
+Vy = Ey .* exp.(Xv * beta_v)
 
 beta_r = [EstimatingEquationsRegression.linkfun(SigmoidLink(-1, 1), r), 0, 0]
 beta = vcat(beta_m, beta_v, beta_r)
@@ -35,7 +35,7 @@ function main()
         y = Ey + sqrt.(Vy) .* (sqrt(r)*u + sqrt(1-r)*randn(N))
         Xr = randn(rng, N, 2)
         Xr[:, 1] .= 1
-        mm = fit(GeneralizedEstimatingEquations2Model, Xm, Xv, Xr, y, g, make_rcov; verbosity=0)
+        mm = fit(GeneralizedEstimatingEquations2Model, Xm, Xv, Xr, y, g, make_rcov; link_mean=LogLink(), varfunc_mean=IdentityVar(), verbosity=0)
         B[j, :] = coef(mm)
         Z[j, :] = (coef(mm) - beta) ./ stderror(mm)
     end

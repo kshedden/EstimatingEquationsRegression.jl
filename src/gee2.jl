@@ -68,7 +68,7 @@ end
 function GeneralizedEstimatingEquations2Model(Xm::AbstractMatrix, Xv::AbstractMatrix, Xr::Union{Nothing,AbstractMatrix},
                                               y::AbstractVector, g::AbstractVector,
                                               make_rcov; link_mean=IdentityLink(), varfunc_mean=ConstantVar(), corstruct_mean=IndependenceCor(),
-                                              link_var=LogLink(), varfunc_var=ConstantVar(), corstruct_var=IndependenceCor(),
+                                              link_scale=LogLink(), varfunc_scale=IdentityVar(), corstruct_scale=IndependenceCor(),
                                               link_cor=SigmoidLink(-1, 1), varfunc_cor=ConstantVar(), corstruct_cor=IndependenceCor())
 
     if length(y) != length(g)
@@ -87,8 +87,8 @@ function GeneralizedEstimatingEquations2Model(Xm::AbstractMatrix, Xv::AbstractMa
 
     mean_model = fit(GeneralizedEstimatingEquationsModel, Xm, y, g; l=link_mean, v=varfunc_mean,
                      c=corstruct_mean, d=NoDistribution(), dofit=false)
-    scale_model = fit(GeneralizedEstimatingEquationsModel, Xv, zeros(length(y)), g; l=link_var, v=varfunc_var,
-                    c=corstruct_var, d=NoDistribution(), dofit=false)
+    scale_model = fit(GeneralizedEstimatingEquationsModel, Xv, zeros(length(y)), g; l=link_scale, v=varfunc_scale,
+                    c=corstruct_scale, d=NoDistribution(), dofit=false)
 
     if isnothing(Xr)
         cor_model = nothing
@@ -104,13 +104,13 @@ end
 function fit(::Type{GeneralizedEstimatingEquations2Model}, Xm::AbstractMatrix, Xv::AbstractMatrix, Xr::Union{Nothing,AbstractMatrix},
                                               y::AbstractVector, g::AbstractVector, make_rcov;
                                               link_mean=IdentityLink(), varfunc_mean=ConstantVar(), corstruct_mean=IndependenceCor(),
-                                              link_var=LogLink(), varfunc_var=ConstantVar(), corstruct_var=IndependenceCor(),
+                                              link_scale=LogLink(), varfunc_scale=IdentityVar(), corstruct_scale=IndependenceCor(),
                                               link_cor=SigmoidLink(-1, 1), varfunc_cor=ConstantVar(), corstruct_cor=IndependenceCor(), dofit=true,
                                               verbosity=0, maxiter=10)
 
     gee = GeneralizedEstimatingEquations2Model(Xm, Xv, Xr, y, g, make_rcov;
                                                link_mean=link_mean, varfunc_mean=varfunc_mean, corstruct_mean=corstruct_mean,
-                                               link_var=link_var, varfunc_var=varfunc_var, corstruct_var=corstruct_var,
+                                               link_scale=link_scale, varfunc_scale=varfunc_scale, corstruct_scale=corstruct_scale,
                                                link_cor=link_cor, varfunc_cor=varfunc_cor, corstruct_cor=corstruct_cor)
 
     if dofit
@@ -274,8 +274,6 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
         i1, i2 = mean_model.rr.grpix[:, j]
         _update_group(mean_model, j, false)
         _update_group(scale_model, j, false)
-
-        # TODO
         w = length(mean_model.rr.wts) > 0 ? mean_model.rr.wts[i1:i2] : zeros(0)
 
         # Update the meat for the mean and variance parameters
@@ -306,6 +304,8 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
         # Update the bread for the correlation parameters
         ix1, ix2 = tri_indices(i1, i2)
 
+        wr = length(cor_model.rr.wts) > 0 ? cor_model.rr.wts[i1:i2] : zeros(0)
+
         # Bread matrix D in Yan and Fine
         qp = mean_model.rr.resid[ix1[:, 1]] .* mean_model.rr.resid[ix1[:, 2]]
         u = -mean_model.rr.resid[ix1[:, 2]] - 0.5 * qp .* vd[ix1[:, 1]] ./ v[ix1[:, 1]]
@@ -314,16 +314,15 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
         U .+= Diagonal(u) * mean_model.pp.D[ix2[:, 2]]
         qf = sqrt.(va[ix1[:, 1]] .* va[ix1[:, 2]])
         U = Diagonal(1 ./ qf) * U
-        wr = ones(size(ix1, 1)) # TODO
         C = covsolve(cor_model.qq.cor, cor_model.rr.mu[j1:j2], cor_model.rr.sd[j1:j2], wr, U)
-        B[p+q+1:p+q+r, 1:p] .+= cor_model.pp.D' * C
+        B[p+q+1:p+q+r, 1:p] .-= cor_model.pp.D' * C
 
         # Bread matrix E in Yan and Fine
         U = Diagonal(1 ./ scale[ix1[:, 1]]) * scale_model.pp.D[ix2[:, 1], :]
         U .+= Diagonal(1 ./ scale[ix1[:, 2]]) * scale_model.pp.D[ix2[:, 2], :]
-        U = Diagonal(-0.5 * qp / qf) * U
+        U = Diagonal(-0.5 * qp ./ qf) * U
         C = covsolve(cor_model.qq.cor, cor_model.rr.mu[j1:j2], cor_model.rr.sd[j1:j2], w, U)
-        B[p+q+1:p+q+r, p+1:p+q] .+= cor_model.pp.D' * C
+        B[p+q+1:p+q+r, p+1:p+q] .-= cor_model.pp.D' * C
     end
 
     # Fill in the other blocks by transposing
