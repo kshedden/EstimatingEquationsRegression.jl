@@ -36,7 +36,7 @@ function main()
         u = repeat(randn(n), inner=m)
         y = Ey + sqrt.(Vy) .* (sqrt(r)*u + sqrt(1-r)*randn(N))
         mm = fit(GeneralizedEstimatingEquations2Model, Xm, Xv, Xr, y, g, make_rcov; link_mean=LogLink(),
-                 varfunc_mean=IdentityVar(), verbosity=0)
+                 varfunc_mean=IdentityVar(), verbosity=0, cor_pair_factor=0.0)
         B[j, :] = coef(mm)
         Z[j, :] = (coef(mm) - beta) ./ stderror(mm)
     end

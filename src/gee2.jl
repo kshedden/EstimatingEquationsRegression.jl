@@ -9,11 +9,17 @@ mutable struct GeneralizedEstimatingEquations2Model <: AbstractGEE
     # GEE model for the correlation structure
     cor_model::Union{GeneralizedEstimatingEquationsModel,Nothing}
 
+    # Indices of observation pairs for estimating correlation parameters.
+    # The indices are offset to the beginning of a group.
+    cor_pairs::Vector{Matrix{Int}}
+
     # True if the model has been fit
     fit::Bool
 
     # True if the model has been fit and the fit was successful
     converged::Bool
+
+    mean_tablemodel::Union{StatsModels.TableRegressionModel,Nothing}
 end
 
 struct SigmoidLink <: Link
@@ -39,10 +45,9 @@ function mueta(sl::SigmoidLink, x::Real)
     return sl.range / ((1 + exp(-x)) * (1 + exp(x)))
 end
 
-function build_rcov(Xr, gi, make_rcov)
+function build_rcov(Xr, gi, cp, make_rcov)
 
-    n = (gi[2, :] - gi[1, :]) .+ 1
-    m = Int(sum(x->x*(x-1)/2, n))
+    m = sum(x->size(x, 1), cp)
 
     # Make 1 row to get the length
     u = make_rcov(Xr[1, :], Xr[2, :])
@@ -52,25 +57,21 @@ function build_rcov(Xr, gi, make_rcov)
     gr = zeros(m)
 
     ii = 1
-    for j in 1:size(gi, 2)
-        for i1 in gi[1, j]:gi[2, j]
-            for i2 in i1+1:gi[2, j]
-                X[ii, :] = make_rcov(Xr[i1, :], Xr[i2, :])
-                gr[ii] = j
-                ii += 1
-            end
+    for j in eachindex(cp)
+        for k in 1:size(cp[j], 1)
+            i1, i2 = cp[j][k, :]
+            i1 += gi[1, j] - 1
+            i2 += gi[1, j] - 1
+            X[ii, :] = make_rcov(Xr[i1, :], Xr[i2, :])
+            gr[ii] = j
+            ii += 1
         end
     end
 
     return X, gr
 end
 
-function GeneralizedEstimatingEquations2Model(Xm::AbstractMatrix, Xv::AbstractMatrix, Xr::Union{Nothing,AbstractMatrix},
-                                              y::AbstractVector, g::AbstractVector,
-                                              make_rcov; link_mean=IdentityLink(), varfunc_mean=ConstantVar(), corstruct_mean=IndependenceCor(),
-                                              link_scale=LogLink(), varfunc_scale=IdentityVar(), corstruct_scale=IndependenceCor(),
-                                              link_cor=SigmoidLink(-1, 1), varfunc_cor=ConstantVar(), corstruct_cor=IndependenceCor())
-
+function gee2_check_arrays(y, g, Xm, Xv, Xr)
     if length(y) != length(g)
         error("'y' and 'g' must have the same length")
     end
@@ -83,35 +84,61 @@ function GeneralizedEstimatingEquations2Model(Xm::AbstractMatrix, Xv::AbstractMa
         error("The length of 'y' must be equal to the number of rows of 'Xv'")
     end
 
-    (gi, mg) = groupix(g)
+    if !isnothing(Xr) && length(y) != size(Xr, 1)
+        error("The length of 'y' must be equal to the number of rows of 'Xr'")
+    end
+end
 
-    mean_model = fit(GeneralizedEstimatingEquationsModel, Xm, y, g; l=link_mean, v=varfunc_mean,
-                     c=corstruct_mean, d=NoDistribution(), dofit=false)
-    scale_model = fit(GeneralizedEstimatingEquationsModel, Xv, zeros(length(y)), g; l=link_scale, v=varfunc_scale,
+function GeneralizedEstimatingEquations2Model(Xm::Union{AbstractMatrix,DataFrame}, Xv::AbstractMatrix,
+                                              Xr::Union{Nothing,AbstractMatrix}, y::AbstractVector, g::AbstractVector,
+                                              make_rcov; mean_fml=nothing, link_mean=IdentityLink(), varfunc_mean=ConstantVar(),
+                                              corstruct_mean=IndependenceCor(), link_scale=LogLink(), varfunc_scale=IdentityVar(), corstruct_scale=IndependenceCor(),
+                                              link_cor=SigmoidLink(-1, 1), varfunc_cor=ConstantVar(),
+                                              corstruct_cor=IndependenceCor(), cor_pair_factor::Float64=0)
+
+    cp = Vector{Matrix{Int}}(undef, 0)
+
+    mean_tablemodel = nothing
+
+    if typeof(mean_fml) <: AbstractTerm
+        mean_tablemodel = fit(GeneralizedEstimatingEquationsModel, mean_fml, Xm, g; l=link_mean, v=varfunc_mean,
+                              c=corstruct_mean, d=NoDistribution(), dofit=false)
+        mean_model = mean_tablemodel.model
+    else
+        gee2_check_arrays(y, g, Xm, Xv, Xr)
+        mean_model = fit(GeneralizedEstimatingEquationsModel, Xm, y, g; l=link_mean, v=varfunc_mean,
+                         c=corstruct_mean, d=NoDistribution(), dofit=false)
+    end
+
+    n = length(response(mean_model))
+    scale_model = fit(GeneralizedEstimatingEquationsModel, Xv, zeros(n), g; l=link_scale, v=varfunc_scale,
                     c=corstruct_scale, d=NoDistribution(), dofit=false)
 
     if isnothing(Xr)
         cor_model = nothing
     else
-        Xrm, gr = build_rcov(Xr, gi, make_rcov)
+        (gi, mg) = groupix(g)
+        cp = make_cor_pairs(gi, cor_pair_factor)
+        Xrm, gr = build_rcov(Xr, gi, cp, make_rcov)
         cor_model = fit(GeneralizedEstimatingEquationsModel, Xrm, zeros(size(Xrm, 1)), gr; l=link_cor,
                         v=varfunc_cor, c=corstruct_cor, d=NoDistribution(), dofit=false)
     end
 
-    return GeneralizedEstimatingEquations2Model(mean_model, scale_model, cor_model, false, false)
+    return GeneralizedEstimatingEquations2Model(mean_model, scale_model, cor_model, cp, false, false, mean_tablemodel)
 end
 
-function fit(::Type{GeneralizedEstimatingEquations2Model}, Xm::AbstractMatrix, Xv::AbstractMatrix, Xr::Union{Nothing,AbstractMatrix},
-                                              y::AbstractVector, g::AbstractVector, make_rcov;
-                                              link_mean=IdentityLink(), varfunc_mean=ConstantVar(), corstruct_mean=IndependenceCor(),
-                                              link_scale=LogLink(), varfunc_scale=PowerVar(2), corstruct_scale=IndependenceCor(),
-                                              link_cor=SigmoidLink(-1, 1), varfunc_cor=ConstantVar(), corstruct_cor=IndependenceCor(), dofit=true,
-                                              verbosity=0, maxiter=10)
+function fit(::Type{GeneralizedEstimatingEquations2Model}, Xm::Union{AbstractMatrix,AbstractDataFrame},
+             Xv::AbstractMatrix, Xr::Union{Nothing,AbstractMatrix}, y::AbstractVector, g::AbstractVector, make_rcov;
+             mean_fml=nothing, link_mean=IdentityLink(), varfunc_mean=ConstantVar(), corstruct_mean=IndependenceCor(),
+             link_scale=LogLink(), varfunc_scale=PowerVar(2), corstruct_scale=IndependenceCor(),
+             link_cor=SigmoidLink(-1, 1), varfunc_cor=ConstantVar(), corstruct_cor=IndependenceCor(), dofit=true,
+             verbosity=0, maxiter=10, cor_pair_factor::Float64=0.0)
 
-    gee = GeneralizedEstimatingEquations2Model(Xm, Xv, Xr, y, g, make_rcov;
+    gee = GeneralizedEstimatingEquations2Model(Xm, Xv, Xr, y, g, make_rcov; mean_fml=mean_fml,
                                                link_mean=link_mean, varfunc_mean=varfunc_mean, corstruct_mean=corstruct_mean,
                                                link_scale=link_scale, varfunc_scale=varfunc_scale, corstruct_scale=corstruct_scale,
-                                               link_cor=link_cor, varfunc_cor=varfunc_cor, corstruct_cor=corstruct_cor)
+                                               link_cor=link_cor, varfunc_cor=varfunc_cor, corstruct_cor=corstruct_cor,
+                                               cor_pair_factor=cor_pair_factor)
 
     if dofit
         fit!(gee, verbosity=verbosity, maxiter=maxiter)
@@ -120,10 +147,10 @@ function fit(::Type{GeneralizedEstimatingEquations2Model}, Xm::AbstractMatrix, X
     return gee
 end
 
-function update_gee2!(gee::GeneralizedEstimatingEquations2Model; verbosity=0)
+function update_gee2!(gee::GeneralizedEstimatingEquations2Model, stage; verbosity=0)
 
-    (; mean_model, scale_model, cor_model) = gee
-    gi = mean_model.rr.grpix
+    (; mean_model, scale_model, cor_model, cor_pairs) = gee
+    gix = mean_model.rr.grpix
 
     # Fitted mean
     mn = predict(mean_model; type=:response)
@@ -134,14 +161,18 @@ function update_gee2!(gee::GeneralizedEstimatingEquations2Model; verbosity=0)
     # Variance contribution from the mean/variance relationship
     vm = geevar.(varfunc(mean_model), mn)
 
+    # Update the response for the scale parameter estimation
+    scale_model.rr.y .= resid.^2 ./ vm
+
+    if stage == 1
+        return
+    end
+
     # Scale parameter
     scl = predict(scale_model; type=:response)
 
     # Fitted variance
     va = vm .* scl
-
-    # Update the response for the scale parameter estimation
-    scale_model.rr.y .= resid.^2 ./ vm
 
     # Update the response for correlation estimation
     if !isnothing(cor_model)
@@ -155,12 +186,15 @@ function update_gee2!(gee::GeneralizedEstimatingEquations2Model; verbosity=0)
         end
 
         ii = 1
-        for j in 1:size(gi, 2)
-            for i1 in gi[1, j]:gi[2, j]
-                for i2 in i1+1:gi[2, j]
-                    cor_model.rr.y[ii] = resid[i1] * resid[i2] ./ sqrt(va[i1] * va[i2])
-                    ii += 1
-                end
+        for j in 1:size(gix, 2)
+            ix = cor_pairs[j]
+            j1, j2 = gix[:, j]
+            resid1 = resid[j1:j2]
+            va1 = va[j1:j2]
+            for j in 1:size(ix, 1)
+                i1, i2 = ix[j, :]
+                cor_model.rr.y[ii] = resid1[i1] * resid1[i2] ./ sqrt(va1[i1] * va1[i2])
+                ii += 1
             end
         end
     end
@@ -179,16 +213,19 @@ function fit!(gee::GeneralizedEstimatingEquations2Model; maxiter=20, verbosity=0
     for iter in 1:maxiter
         verbosity == 0 || println("Iteration $(iter)")
         verbosity <= 1 || println("  Fitting mean model...")
-        fit!(mean_model; verbosity=verbosity, bccor=false)
+        fit!(mean_model; verbosity=verbosity, inference=false)
         verbosity <= 1 || println("  Done fitting mean model")
-        update_gee2!(gee; verbosity=verbosity)
+        verbosity <= 2 || println(mean_model)
+        update_gee2!(gee, 1; verbosity=verbosity)
         verbosity <= 1 || println("  Fitting variance model...")
-        fit!(scale_model; verbosity=verbosity, bccor=false)
+        verbosity <= 2 || println(scale_model)
+        fit!(scale_model; verbosity=verbosity, inference=false)
         verbosity <= 1 || println("  Done fitting variance model")
         if !isnothing(cor_model)
             verbosity <= 1 || println("  Fitting correlation model...")
-            update_gee2!(gee; verbosity=verbosity)
-            fit!(cor_model; verbosity=verbosity, bccor=false)
+            verbosity <= 2 || println(cor_model)
+            update_gee2!(gee, 2; verbosity=verbosity)
+            fit!(cor_model; verbosity=verbosity, inference=false)
             verbosity <= 1 || println("  Done fitting correlation model")
         end
 
@@ -215,22 +252,57 @@ function fit!(gee::GeneralizedEstimatingEquations2Model; maxiter=20, verbosity=0
     gee.converged = converged
 end
 
-# Return the triangular indices betgween j1 and j2, must match the order used in update_gee2!.
+# For each group, determine the indices of observation pairs that are used to estimate
+# correlation parameters.
+function make_cor_pairs(gi::Matrix{Int}, cor_pair_factor::Float64)
+    cp = Vector{Matrix{Int}}(undef, size(gi, 2))
+    for j in 1:size(gi, 2)
+        j1, j2 = gi[:, j]
+        if cor_pair_factor == 0
+            cp[j] = tri_indices(j1, j2)
+        else
+            cp[j] = tri_indices_sample(j1, j2, cor_pair_factor)
+        end
+    end
+    return cp
+end
+
+# Return all triangular indices between j1 and j2.
 function tri_indices(j1, j2)
     p = j2 - j1 + 1
     m = Int(p*(p-1)/2)
-    I1 = zeros(Int, m, 2)
-    I2 = zeros(Int, m, 2)
+    I = zeros(Int, m, 2)
     ii = 1
 
     for i1 in j1:j2
         for i2 in i1+1:j2
-            I1[ii, :] = [i1, i2]
-            I2[ii, :] = [i1-j1+1, i2-j1+1]
+            I[ii, :] = [i1-j1+1, i2-j1+1]
             ii += 1
         end
     end
-    return I1, I2
+    return I
+end
+
+# Return a sample of triangular indices between j1 and j2, with size
+# equal to the group size times cor_pair_factor.
+function tri_indices_sample(j1, j2, cor_pair_factor)
+    p = j2 - j1 + 1
+    m0 = Int(p*(p-1)/2)
+    m = Int(floor(cor_pair_factor * p))
+
+    if m >= m0
+        return tri_indices(j1, j2)
+    end
+
+    J = sample(1:m0, m; replace=false)
+    I = zeros(Int, m, 2)
+    for ii in 1:m
+        p = Int(floor((sqrt(1 + 8*(ii - 1)) - 1) / 2))
+        i1 = p + 2
+        i2 = Int(ii - 1 - p * (p + 1) / 2 + 1)
+        I[ii, :] = [i1, i2]
+    end
+    return I
 end
 
 function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
@@ -272,11 +344,20 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
         _iterprep(cor_model)
     end
 
+    # Index the correlation model groups, which may not be aligned with the mean model groups.
+    jc = 0
+
     for j in 1:size(mean_model.rr.grpix, 2)
         i1, i2 = mean_model.rr.grpix[:, j]
         _update_group(mean_model, j, false)
         _update_group(scale_model, j, false)
         w = length(mean_model.rr.wts) > 0 ? mean_model.rr.wts[i1:i2] : zeros(0)
+
+        v1 = v[i1:i2]
+        vd1 = vd[i1:i2]
+        va1 = va[i1:i2]
+        scale1 = scale[i1:i2]
+        resid1 = mean_model.rr.resid[i1:i2]
 
         # Update the meat for the mean and variance parameters
         M[1:p, 1:p] .+= mean_model.pp.score_grp * mean_model.pp.score_grp'
@@ -286,17 +367,21 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
         # Update the bread for the mean and variance parameters
         # This is the B matrix of Yan and Fine
         # U is partial s / partial beta
-        u = -2 * mean_model.rr.resid[i1:i2] .* v[i1:i2] .- mean_model.rr.resid[i1:i2].^2 .* vd[i1:i2]
-        U = (Diagonal(u) * mean_model.pp.D) ./ v[i1:i2].^2
+        u = -2 * resid1 .* v1 .- resid1.^2 .* vd1
+        U = (Diagonal(u) * mean_model.pp.D) ./ v1.^2
         C = covsolve(scale_model.qq.cor, scale_model.rr.mu[i1:i2], scale_model.rr.sd[i1:i2], w, U)
         B[p+1:p+q, 1:p] .-= scale_model.pp.D' * C
 
-        if isnothing(cor_model)
+        if isnothing(cor_model) || size(gee.cor_pairs[j], 1) == 0
             continue
         end
 
-        j1, j2 = cor_model.rr.grpix[:, j]
-        _update_group(cor_model, j, false)
+        jc += 1
+        j1, j2 = cor_model.rr.grpix[:, jc]
+        _update_group(cor_model, jc, false)
+
+        cor_mu1 = cor_model.rr.mu[j1:j2]
+        cor_sd1 = cor_model.rr.sd[j1:j2]
 
         # Update the meat for the correlation marameters
         M[p+q+1:p+q+r, 1:p] .+= cor_model.pp.score_grp * mean_model.pp.score_grp'
@@ -304,26 +389,26 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
         M[p+q+1:p+q+r, p+q+1:p+q+r] .+= cor_model.pp.score_grp * cor_model.pp.score_grp'
 
         # Update the bread for the correlation parameters
-        ix1, ix2 = tri_indices(i1, i2)
+        ix = gee.cor_pairs[j]
 
         wr = length(cor_model.rr.wts) > 0 ? cor_model.rr.wts[i1:i2] : zeros(0)
 
         # Bread matrix D in Yan and Fine
-        qp = mean_model.rr.resid[ix1[:, 1]] .* mean_model.rr.resid[ix1[:, 2]]
-        u = -mean_model.rr.resid[ix1[:, 2]] - 0.5 * qp .* vd[ix1[:, 1]] ./ v[ix1[:, 1]]
-        U = Diagonal(u) * mean_model.pp.D[ix2[:, 1]]
-        u = -mean_model.rr.resid[ix1[:, 1]] - 0.5 * qp .* vd[ix1[:, 2]] ./ v[ix1[:, 2]]
-        U .+= Diagonal(u) * mean_model.pp.D[ix2[:, 2]]
-        qf = sqrt.(va[ix1[:, 1]] .* va[ix1[:, 2]])
+        qp = resid1[ix[:, 1]] .* resid1[ix[:, 2]]
+        u = -resid1[ix[:, 2]] - 0.5 * qp .* vd1[ix[:, 1]] ./ v1[ix[:, 1]]
+        U = Diagonal(u) * mean_model.pp.D[ix[:, 1], :]
+        u = -resid1[ix[:, 1]] - 0.5 * qp .* vd1[ix[:, 2]] ./ v1[ix[:, 2]]
+        U .+= Diagonal(u) * mean_model.pp.D[ix[:, 2], :]
+        qf = sqrt.(va1[ix[:, 1]] .* va1[ix[:, 2]])
         U = Diagonal(1 ./ qf) * U
-        C = covsolve(cor_model.qq.cor, cor_model.rr.mu[j1:j2], cor_model.rr.sd[j1:j2], wr, U)
+        C = covsolve(cor_model.qq.cor, cor_mu1, cor_sd1, wr, U)
         B[p+q+1:p+q+r, 1:p] .-= cor_model.pp.D' * C
 
         # Bread matrix E in Yan and Fine
-        U = Diagonal(1 ./ scale[ix1[:, 1]]) * scale_model.pp.D[ix2[:, 1], :]
-        U .+= Diagonal(1 ./ scale[ix1[:, 2]]) * scale_model.pp.D[ix2[:, 2], :]
+        U = Diagonal(1 ./ scale1[ix[:, 1]]) * scale_model.pp.D[ix[:, 1], :]
+        U .+= Diagonal(1 ./ scale1[ix[:, 2]]) * scale_model.pp.D[ix[:, 2], :]
         U = Diagonal(-0.5 * qp ./ qf) * U
-        C = covsolve(cor_model.qq.cor, cor_model.rr.mu[j1:j2], cor_model.rr.sd[j1:j2], w, U)
+        C = covsolve(cor_model.qq.cor, cor_mu1, cor_sd1, w, U)
         B[p+q+1:p+q+r, p+1:p+q] .-= cor_model.pp.D' * C
     end
 
@@ -334,7 +419,15 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
         M[p+1:p+q, p+q+1:p+q+r] .= M[p+q+1:p+q+r, p+1:p+q]'
     end
 
-    return B \ M / B'
+    try
+        return B \ M / B'
+    catch e
+        println("Using pseudo-inverse to construct parameter covariance matrix")
+        display(B)
+        display(M)
+        BI = pinv(B)
+        return BI * M * BI'
+    end
 end
 
 function coef(mm::GeneralizedEstimatingEquations2Model)
@@ -358,12 +451,7 @@ function coeftable(mm::GeneralizedEstimatingEquations2Model; level::Real = 0.95,
     p, q = size(modelmatrix(mean_model), 2), size(modelmatrix(scale_model), 2)
     r = isnothing(cor_model) ? 0 : size(modelmatrix(cor_model), 2)
 
-    # Generic covariate names
-    vnames1 = ["Mean X$(i)" for i in 1:p]
-    vnames2 = ["Scale X$(i)" for i in 1:q]
-    vnames3 = ["Cor X$(i)" for i in 1:r]
-    vnames = vcat(vnames1, vnames2, vnames3)
-
+    vnames = coefnames(mm)
     cc = coef(mm)
     se = stderror(mm; cov_type=cov_type)
     zz = cc ./ se
@@ -398,4 +486,15 @@ function show(io::IO, mm::GeneralizedEstimatingEquations2Model)
           @sprintf("Min grp size: %d", minimum(gsize)) @sprintf("Max grp size: %d", maximum(gsize))]
     pretty_table(io, ta; tf=tf_borderless, show_header=false, alignment=:l)
    show(io, coeftable(mm))
+end
+
+function coefnames(mm::GeneralizedEstimatingEquations2Model)
+    p = size(modelmatrix(mm.mean_model), 2)
+    q = size(modelmatrix(mm.scale_model), 2)
+    r = isnothing(mm.cor_model) ? 0 : size(modelmatrix(mm.cor_model), 2)
+    vnames1 = isnothing(mm.mean_tablemodel) ? ["Mean X$(i)" for i in 1:p] : ["Mean $(x)" for x in coefnames(mm.mean_tablemodel)]
+    vnames2 = ["Scale X$(i)" for i in 1:q]
+    vnames3 = ["Cor X$(i)" for i in 1:r]
+    vnames = vcat(vnames1, vnames2, vnames3)
+    return vnames
 end

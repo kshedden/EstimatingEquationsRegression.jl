@@ -5,7 +5,7 @@ import StatsAPI: coef, coeftable, coefnames, vcov, stderror, dof, dof_residual
 import StatsAPI: HypothesisTest, fit, predict, pvalue, residuals, nobs
 
 using Distributions, LinearAlgebra, DataFrames, StatsModels
-using StatsBase: CoefTable, StatisticalModel, RegressionModel
+using StatsBase: CoefTable, StatisticalModel, RegressionModel, sample
 using PrettyTables
 
 using GLM: Link, LinPredModel, LinPred, ModResp, mueta

@@ -43,10 +43,9 @@ function save()
     CSV.write("data1.csv", da)
 end
 
-#include("gee2.jl")
-
 include("Aqua.jl")
 #include("gee_r.jl")
 include("gee.jl")
+include("gee2.jl")
 include("geee.jl")
 include("qif.jl")

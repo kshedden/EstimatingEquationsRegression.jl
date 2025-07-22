@@ -337,7 +337,7 @@ function invert_scaling!(m)
 end
 
 function _fit!(mod::M, verbosity::Int, maxiter::Integer, atol::Real, rtol::Real,
-               start, fitcoef::Bool, fitcor::Bool, bccor::Bool) where{M<:AbstractGEE}
+               start, fitcoef::Bool, fitcor::Bool, bccor::Bool, inference::Bool) where{M<:AbstractGEE}
 
     mod.fit && return mod
 
@@ -384,6 +384,11 @@ function _fit!(mod::M, verbosity::Int, maxiter::Integer, atol::Real, rtol::Real,
 
     # The model has been fit
     mod.fit = true
+
+    if !inference
+        invert_scaling!(mod)
+        return mod
+    end
 
     nacov .= try
         inv(DtViD_sum)
@@ -587,6 +592,7 @@ function fit_quasi(
     fitcoef::Bool=true,
     fitcor::Bool=true,
     bccor::Bool=false,
+    inference::Bool=true,
     fitargs...,
 )
     X, y, wts, offset, gi, mg = prepargs(X, y, g, wts, offset)
@@ -602,7 +608,7 @@ function fit_quasi(
         false,
     )
 
-    return dofit ? fit!(res; start=start, fitcoef=fitcoef, fitcor=fitcor, bccor=bccor, fitargs...) : res
+    return dofit ? fit!(res; start=start, fitcoef=fitcoef, fitcor=fitcor, bccor=bccor, inference=inference, fitargs...) : res
 end
 
 # Traditional GEE fitting function
@@ -623,6 +629,7 @@ function fit_gee(
     fitcoef::Bool=true,
     fitcor::Bool=true,
     bccor::Bool=false,
+    inference::Bool=true,
     fitargs...,
 )
     X, y, wts, offset, gi, mg = prepargs(X, y, g, wts, offset)
@@ -639,7 +646,7 @@ function fit_gee(
         false,
     )
 
-    return dofit ? fit!(res; start=start, fitcoef=fitcoef, fitcor=fitcor, bccor=bccor, fitargs...) : res
+    return dofit ? fit!(res; start=start, fitcoef=fitcoef, fitcor=fitcor, bccor=bccor, inference=inference, fitargs...) : res
 end
 
 struct NoDistribution <: ContinuousUnivariateDistribution end
@@ -738,9 +745,10 @@ function fit!(
     fitcoef::Bool = true,
     fitcor::Bool = true,
     bccor::Bool = false,
+    inference::Bool=true,
     kwargs...,
 )
-    _fit!(m, verbosity, maxiter, atol, rtol, start, fitcoef, fitcor, bccor)
+    _fit!(m, verbosity, maxiter, atol, rtol, start, fitcoef, fitcor, bccor, inference)
 end
 
 """
