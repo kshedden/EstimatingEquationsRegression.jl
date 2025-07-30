@@ -19,7 +19,13 @@ mutable struct GeneralizedEstimatingEquations2Model <: AbstractGEE
     # True if the model has been fit and the fit was successful
     converged::Bool
 
+    # The underlying TableRegression of the mean model, if it was
+    # specified using a formula.
     mean_tablemodel::Union{StatsModels.TableRegressionModel,Nothing}
+
+    # The variance/covariance matrix of the parameters, or an empty
+    # matrix if it has not yet been constructed.
+    vcov::Matrix{Float64}
 end
 
 struct SigmoidLink <: Link
@@ -124,7 +130,7 @@ function GeneralizedEstimatingEquations2Model(Xm::Union{AbstractMatrix,DataFrame
                         v=varfunc_cor, c=corstruct_cor, d=NoDistribution(), dofit=false)
     end
 
-    return GeneralizedEstimatingEquations2Model(mean_model, scale_model, cor_model, cp, false, false, mean_tablemodel)
+    return GeneralizedEstimatingEquations2Model(mean_model, scale_model, cor_model, cp, false, false, mean_tablemodel, zeros(0, 0))
 end
 
 function fit(::Type{GeneralizedEstimatingEquations2Model}, Xm::Union{AbstractMatrix,AbstractDataFrame},
@@ -307,6 +313,10 @@ end
 
 function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
 
+    if size(gee.vcov, 1) > 0
+        return gee.vcov
+    end
+
     (; mean_model, scale_model, cor_model) = gee
 
     Xm = modelmatrix(mean_model)
@@ -420,14 +430,16 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
     end
 
     try
-        return B \ M / B'
+        gee.vcov = B \ M / B'
     catch e
         println("Using pseudo-inverse to construct parameter covariance matrix")
         display(B)
         display(M)
         BI = pinv(B)
-        return BI * M * BI'
+        gee.vcov = BI * M * BI'
     end
+
+    return gee.vcov
 end
 
 function coef(mm::GeneralizedEstimatingEquations2Model)

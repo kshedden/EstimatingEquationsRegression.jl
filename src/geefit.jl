@@ -175,11 +175,11 @@ function _update_group(mod::M, j::Int, last::Bool) where{M<:AbstractGEE}
     i1, i2 = rr.grpix[:, j]
 
     updateD!(pp, rr.dμdη[i1:i2], i1, i2)
-    w = length(rr.wts) > 0 ? rr.wts[i1:i2] : zeros(0)
-    rr.viresid[i1:i2] .= covsolve(qq.cor, rr.mu[i1:i2], rr.sd[i1:i2], w, rr.resid[i1:i2])
+    wts = length(rr.wts) > 0 ? rr.wts[i1:i2] : zeros(0)
+    rr.viresid[i1:i2] .= covsolve(qq.cor, rr.mu[i1:i2], rr.sd[i1:i2], wts, rr.resid[i1:i2])
     pp.score_grp .= pp.D' * rr.viresid[i1:i2]
     pp.score .+= pp.score_grp
-    cc.DtViD_grp .= pp.D' * covsolve(qq.cor, rr.mu[i1:i2], rr.sd[i1:i2], w, pp.D)
+    cc.DtViD_grp .= pp.D' * covsolve(qq.cor, rr.mu[i1:i2], rr.sd[i1:i2], wts, pp.D)
     cc.DtViD_sum .+= cc.DtViD_grp
 
     if last
@@ -222,9 +222,9 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
     for (g, (i1, i2)) in enumerate(eachcol(r.grpix))
 
         # Computation of common quantities
-        w = length(r.wts) > 0 ? r.wts[i1:i2] : zeros(0)
+        wts = length(r.wts) > 0 ? r.wts[i1:i2] : zeros(0)
         updateD!(p, r.dμdη[i1:i2], i1, i2)
-        vid = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], w, p.D)
+        vid = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], wts, p.D)
         vid .= vid ./ di
 
         # Group size
@@ -245,13 +245,13 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
         eval2 = 1 ./ sqrt.(eval)
         eval2[eval.==0] .= 0
         ar = evec * diagm(eval2) * evec' * r.resid[i1:i2]
-        sr = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], w, real(ar))
+        sr = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], wts, real(ar))
         sr = p.D' * sr
         bcm_kc .+= sr * sr'
 
         # Mancl-DeRouen
         ar = (I(m) - h) \ r.resid[i1:i2]
-        sr = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], w, ar)
+        sr = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], wts, ar)
         sr = p.D' * sr
         bcm_md .+= sr * sr'
     end
