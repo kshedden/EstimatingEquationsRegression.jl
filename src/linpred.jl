@@ -57,7 +57,7 @@ end
 # Update the model coefficients by taking a Gauss-Seidel step.  If `diagonalize` is true this is an approximate
 # stepoo using only the diagonal elements of the Hessian matrix.  If bclip is positive, the elements of the step vector
 # are truncated.
-function updateβ!(p::DensePred, numer::Vector{T}, denom::Matrix{T}; diagonalize::Bool=false, bclip::Float64=-1.0) where {T<:Real}
+function update_coef!(p::DensePred, numer::Vector{T}, denom::Matrix{T}; diagonalize::Bool=false, bclip::Float64=-1.0) where {T<:Real}
     if diagonalize
         denom = Diagonal(diag(denom))
     end
@@ -65,7 +65,7 @@ function updateβ!(p::DensePred, numer::Vector{T}, denom::Matrix{T}; diagonalize
         p.delbeta .= denom \ numer
     catch e
         if isa(e, SingularException)
-            @warn("Singularity encountered in updateβ!, using pseudo-inverse")
+            @warn("Singularity encountered in update_coef!, using pseudo-inverse")
             p.delbeta .= pinv(denom) * numer
         else
             throw(e)

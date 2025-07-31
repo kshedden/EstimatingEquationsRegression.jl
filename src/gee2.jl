@@ -165,7 +165,8 @@ function update_gee2!(gee::GeneralizedEstimatingEquations2Model, stage; verbosit
     resid = mean_model.rr.y - mn
 
     # Variance contribution from the mean/variance relationship
-    vm = geevar.(varfunc(mean_model), mn)
+    awts1 = ones(length(mn))
+    vm = geevar.(varfunc(mean_model), mn, awts1)
 
     # Update the response for the scale parameter estimation
     scale_model.rr.y .= resid.^2 ./ vm
@@ -217,21 +218,34 @@ function fit!(gee::GeneralizedEstimatingEquations2Model; maxiter=20, verbosity=0
     cr = isnothing(cor_model) ? [] : zeros(size(modelmatrix(cor_model), 2))
 
     for iter in 1:maxiter
+
+        mean_model.isfitted = false
+        scale_model.isfitted = false
+        if !isnothing(cor_model)
+            cor_model.isfitted = false
+        end
+
+        if iter > 1
+            va = predict(scale_model; type=:response)
+            va .= clamp.(va, 1e-4, Inf)
+            mean_model.rr.awts .= 1 ./ va
+        end
+
         verbosity == 0 || println("Iteration $(iter)")
         verbosity <= 1 || println("  Fitting mean model...")
         fit!(mean_model; verbosity=verbosity, inference=false)
         verbosity <= 1 || println("  Done fitting mean model")
         verbosity <= 2 || println(mean_model)
         update_gee2!(gee, 1; verbosity=verbosity)
-        verbosity <= 1 || println("  Fitting variance model...")
-        verbosity <= 2 || println(scale_model)
+        verbosity <= 1 || println("  Fitting scale model...")
         fit!(scale_model; verbosity=verbosity, inference=false)
-        verbosity <= 1 || println("  Done fitting variance model")
+        verbosity <= 1 || println("  Done fitting scale model")
+        verbosity <= 2 || println(scale_model)
         if !isnothing(cor_model)
             verbosity <= 1 || println("  Fitting correlation model...")
-            verbosity <= 2 || println(cor_model)
             update_gee2!(gee, 2; verbosity=verbosity)
             fit!(cor_model; verbosity=verbosity, inference=false)
+            verbosity <= 2 || println(cor_model)
             verbosity <= 1 || println("  Done fitting correlation model")
         end
 
@@ -242,6 +256,9 @@ function fit!(gee::GeneralizedEstimatingEquations2Model; maxiter=20, verbosity=0
             fr = isnothing(cor_model) ? 0.0 : norm(coef(cor_model) - cr)
             if max(fm, fv, fr) < eps
                 converged = true
+                if verbosity > 0
+                    println("GEE2 converged in $(iter) iterations")
+                end
                 break
             end
         end
@@ -314,6 +331,7 @@ end
 function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
 
     if size(gee.vcov, 1) > 0
+        # The vcov has already been computed
         return gee.vcov
     end
 
@@ -329,8 +347,14 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
     # The fitted scale parameter
     scale = predict(scale_model; type=:response)
 
-    v = geevar.(varfunc(mean_model), mn)
-    vd = geevarderiv.(varfunc(mean_model), mn)
+    # The variance function and its derivative, do not include
+    # the scale function via analytic weights here.
+    awts1 = ones(length(mn))
+    v = geevar.(varfunc(mean_model), mn, awts1)
+    vd = geevarderiv.(varfunc(mean_model), mn, awts1)
+
+    # The variance of the data, accounting for both the
+    # variance function and the scale function.
     va = v .* scale
 
     p, q = size(Xm, 2), size(Xv, 2)
@@ -361,7 +385,6 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
         i1, i2 = mean_model.rr.grpix[:, j]
         _update_group(mean_model, j, false)
         _update_group(scale_model, j, false)
-        w = length(mean_model.rr.wts) > 0 ? mean_model.rr.wts[i1:i2] : zeros(0)
 
         v1 = v[i1:i2]
         vd1 = vd[i1:i2]
@@ -379,7 +402,7 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
         # U is partial s / partial beta
         u = -2 * resid1 .* v1 .- resid1.^2 .* vd1
         U = (Diagonal(u) * mean_model.pp.D) ./ v1.^2
-        C = covsolve(scale_model.qq.cor, scale_model.rr.mu[i1:i2], scale_model.rr.sd[i1:i2], w, U)
+        C = covsolve(scale_model.qq.cor, scale_model.rr.mu[i1:i2], scale_model.rr.sd[i1:i2], U)
         B[p+1:p+q, 1:p] .-= scale_model.pp.D' * C
 
         if isnothing(cor_model) || size(gee.cor_pairs[j], 1) == 0
@@ -401,8 +424,6 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
         # Update the bread for the correlation parameters
         ix = gee.cor_pairs[j]
 
-        wr = length(cor_model.rr.wts) > 0 ? cor_model.rr.wts[i1:i2] : zeros(0)
-
         # Bread matrix D in Yan and Fine
         qp = resid1[ix[:, 1]] .* resid1[ix[:, 2]]
         u = -resid1[ix[:, 2]] - 0.5 * qp .* vd1[ix[:, 1]] ./ v1[ix[:, 1]]
@@ -411,14 +432,14 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
         U .+= Diagonal(u) * mean_model.pp.D[ix[:, 2], :]
         qf = sqrt.(va1[ix[:, 1]] .* va1[ix[:, 2]])
         U = Diagonal(1 ./ qf) * U
-        C = covsolve(cor_model.qq.cor, cor_mu1, cor_sd1, wr, U)
+        C = covsolve(cor_model.qq.cor, cor_mu1, cor_sd1, U)
         B[p+q+1:p+q+r, 1:p] .-= cor_model.pp.D' * C
 
         # Bread matrix E in Yan and Fine
         U = Diagonal(1 ./ scale1[ix[:, 1]]) * scale_model.pp.D[ix[:, 1], :]
         U .+= Diagonal(1 ./ scale1[ix[:, 2]]) * scale_model.pp.D[ix[:, 2], :]
         U = Diagonal(-0.5 * qp ./ qf) * U
-        C = covsolve(cor_model.qq.cor, cor_mu1, cor_sd1, w, U)
+        C = covsolve(cor_model.qq.cor, cor_mu1, cor_sd1, U)
         B[p+q+1:p+q+r, p+1:p+q] .-= cor_model.pp.D' * C
     end
 

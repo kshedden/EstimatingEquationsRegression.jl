@@ -77,11 +77,11 @@ function scoretest(model::AbstractGEE, submodel::AbstractGEE)
         throw(error("scoretest submodel must have smaller rank than parent model"))
     typeof(Distribution(model)) == typeof(Distribution(submodel)) ||
         throw(error("scoretest models must have same distributions"))
-    typeof(Corstruct(model)) == typeof(Corstruct(submodel)) ||
+    typeof(corstruct(model)) == typeof(corstruct(submodel)) ||
         throw(error("scoretest models must have same correlation structures"))
     typeof(Link(model)) == typeof(Link(submodel)) ||
         throw(error("scoretest models must have same link functions"))
-    typeof(Varfunc(model)) == typeof(Varfunc(submodel)) ||
+    typeof(varfunc(model)) == typeof(varfunc(submodel)) ||
         throw(error("scoretest models must have same variance functions"))
 
     qm, qc = _score_transforms(model, submodel)

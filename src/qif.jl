@@ -163,6 +163,12 @@ function mueta2(::LogLink, eta::T) where {T<:Real}
     return exp(eta)
 end
 
+# Weights are not implemented
+function weights(qif::QIF{T}; type::Symbol=:analytic) where {T<:Real}
+    n = length(qif.rr.mu)
+    return ones(n)
+end
+
 # Update the linear predictor and related n-dimensional quantities
 # that do not depend on thr grouping or correlation structures.
 function iterprep!(qif::QIF{T}, beta::Vector{T}) where {T<:Real}
@@ -172,7 +178,8 @@ function iterprep!(qif::QIF{T}, beta::Vector{T}) where {T<:Real}
     qif.rr.resid .= qif.rr.y - qif.rr.mu
     qif.rr.dmudeta .= mueta.(qif.link, qif.rr.eta)
     qif.rr.d2mudeta2 .= mueta2.(qif.link, qif.rr.eta)
-    qif.rr.sd .= sqrt.(geevar.(NoDistribution(), qif.varfunc, qif.rr.mu))
+    awts = weights(qif; type=:analytic)
+    qif.rr.sd .= sqrt.(geevar.(NoDistribution(), qif.varfunc, qif.rr.mu, awts))
     qif.rr.sresid .= qif.rr.resid ./ qif.rr.sd
 end
 
@@ -212,7 +219,8 @@ function scorederiv!(qif::QIF{T}, g::Int, scd::Matrix{T}) where {T<:Real}
     p = length(qif.beta)
     gs = i2 - i1 + 1
     sd = @view(qif.rr.sd[i1:i2])
-    vd = geevarderiv.(NoDistribution(), qif.varfunc, qif.rr.mu[i1:i2])
+    awts = weights(qif; type=:analytic)
+    vd = geevarderiv.(NoDistribution(), qif.varfunc, qif.rr.mu[i1:i2], awts[i1:i2])
     dmudeta = @view(qif.rr.dmudeta[i1:i2])
     d2mudeta2 = @view(qif.rr.d2mudeta2[i1:i2])
     sresid = @view(qif.rr.sresid[i1:i2])

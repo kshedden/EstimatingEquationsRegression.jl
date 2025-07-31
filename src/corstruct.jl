@@ -120,15 +120,11 @@ function updatecor(c::ExchangeableCor, sresid::FPVector, g::Matrix{Int}, ddof::I
     c.aa = clamp(c.aa, 0, c.cap)
 end
 
-function covsolve(c::IndependenceCor, mu, sd, w, z)
-    if length(w) > 0
-        return w .* z ./ sd.^2
-    else
-        return z ./ sd.^2
-    end
+function covsolve(c::IndependenceCor, mu, sd, z)
+    return z ./ sd.^2
 end
 
-function covsolve(c::OrdinalIndependenceCor, mu, sd, w, z)
+function covsolve(c::OrdinalIndependenceCor, mu, sd, z)
     p = length(mu)
     numind = c.numind
     @assert p % numind == 0
@@ -147,15 +143,11 @@ function covsolve(c::OrdinalIndependenceCor, mu, sd, w, z)
     return ma \ z
 end
 
-function covsolve(c::ExchangeableCor, mu, sd, w, z)
+function covsolve(c::ExchangeableCor, mu, sd, z)
     p = length(sd)
     a = c.aa
     f = a / ((1 - a) * (1 + a * (p - 1)))
-    if length(w) > 0
-        di = Diagonal(w ./ sd)
-    else
-        di = Diagonal(1 ./ sd)
-    end
+    di = Diagonal(1 ./ sd)
     x = di * z
     u = x ./ (1 - a)
     if length(size(z)) == 1
@@ -166,14 +158,10 @@ function covsolve(c::ExchangeableCor, mu, sd, w, z)
     di * u
 end
 
-function covsolve(c::AR1Cor, mu, sd, w, z)
+function covsolve(c::AR1Cor, mu, sd, z)
     r = c.aa[1]
     d = size(z, 1)
     q = length(size(z))
-
-    if length(w) > 0
-        z = Diagonal(w) * z
-    end
 
     if d == 1
         # 1x1 case

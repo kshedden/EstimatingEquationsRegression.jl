@@ -2,28 +2,30 @@ module EstimatingEquationsRegression
 
 import Base: show
 import StatsAPI: coef, coeftable, coefnames, vcov, stderror, dof, dof_residual
-import StatsAPI: HypothesisTest, fit, predict, pvalue, residuals, nobs
+import StatsAPI: HypothesisTest, fit, predict, pvalue, residuals, nobs, weights
+import StatsAPI: isfitted
 
 using Distributions, LinearAlgebra, DataFrames, StatsModels
 using StatsBase: CoefTable, StatisticalModel, RegressionModel, sample
-using PrettyTables
+using PrettyTables, Printf
 
+import GLM
 using GLM: Link, LinPredModel, LinPred, ModResp, mueta
 using GLM: IdentityLink, LogLink, LogitLink
 using GLM: GeneralizedLinearModel, dispersion_parameter
 
 # Need to extend these
 # TODO mueta is removed from recent GLM
-import GLM: linkfun, linkinv, mueta, canonicallink
+import GLM: linkfun, linkinv, mueta, canonicallink, dispersion
 
 export show
 
 # From StatsAPI
 export fit, vcov, stderror, coef, coefnames, modelmatrix, predict, coeftable, pvalue
-export dof, residuals, nobs
+export dof, residuals, nobs, weights, isfitted
 
 # Correlation structure exports
-export CorStruct, IndependenceCor, ExchangeableCor, OrdinalIndependenceCor, AR1Cor
+export corstruct, CorStruct, IndependenceCor, ExchangeableCor, OrdinalIndependenceCor, AR1Cor
 
 export fit!, GeneralizedEstimatingEquationsModel, resid_pearson
 export corparams, dispersion, dof, scoretest, gee, NoDistribution
@@ -42,7 +44,7 @@ export IdentityLink, LogLink, LogitLink, canonicallink
 export QIF, qif, QIFBasis, QIFIdentityBasis, QIFHollowBasis, QIFSubdiagonalBasis
 
 # Variance functions
-export Varfunc, geevar, ConstantVar, IdentityVar, BinomialVar, PowerVar
+export varfunc, geevar, ConstantVar, IdentityVar, BinomialVar, PowerVar
 
 const FP = AbstractFloat
 const FPVector{T<:FP} = AbstractArray{T,1}

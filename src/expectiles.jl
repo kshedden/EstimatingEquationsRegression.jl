@@ -111,7 +111,7 @@ function update_score_group!(
     f,
     scr,
 ) where {T<:LinPred}
-    scr .+= xtvg(pp, g, f * covsolve(cor, linpred, sd, zeros(0), resid))
+    scr .+= xtvg(pp, g, f * covsolve(cor, linpred, sd, resid))
 end
 
 function update_denom_group!(
@@ -125,7 +125,7 @@ function update_denom_group!(
     denom,
 ) where {T<:LinPred}
     u = xtvg(pp, g, Diagonal(cresid))
-    denom .+= xtvg(pp, g, f * covsolve(cor, linpred, sd, zeros(0), u'))
+    denom .+= xtvg(pp, g, f * covsolve(cor, linpred, sd, u'))
 end
 
 function GEEE(
@@ -215,8 +215,11 @@ function iterprep!(geee::GEEE, j::Int)
     # Update the products of the residuals and checked residuals for the j'th expectile
     geee.rr.cresidx[:, j] .= geee.rr.resid[:, j] .* geee.rr.cresid[:, j]
 
+    # Analytic weights not yet implemented TODO
+    awts = ones(size(geee.rr.resid, 1))
+
     # Update the conditional standard deviations for the j'th expectile
-    geee.rr.sd[:, j] .= sqrt.(geevar.(NoDistribution(), geee.varfunc, geee.rr.linpred[:, j]))
+    geee.rr.sd[:, j] .= sqrt.(geevar.(NoDistribution(), geee.varfunc, geee.rr.linpred[:, j], awts))
 end
 
 # Place the score and denominator for the jth expectile into 'scr' and 'denom'.

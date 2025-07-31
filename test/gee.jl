@@ -149,7 +149,7 @@ end
 
             mat = makeAR(0.4, d)
             vi = (sm \ (mat \ (sm \ v)))
-            vi2 = EstimatingEquationsRegression.covsolve(c, mu, sd, zeros(0), v)
+            vi2 = EstimatingEquationsRegression.covsolve(c, mu, sd, v)
             @test isapprox(vi, vi2)
 
         end
@@ -172,7 +172,7 @@ end
 
             mat = makeEx(0.4, d)
             vi = (sm \ (mat \ (sm \ v)))
-            vi2 = EstimatingEquationsRegression.covsolve(c, mu, sd, zeros(0), v)
+            vi2 = EstimatingEquationsRegression.covsolve(c, mu, sd, v)
             @test isapprox(vi, vi2)
         end
     end
@@ -188,7 +188,7 @@ end
     sd = mu .* (1 .- mu)
     rhs = Array{Float64}(I(4))
 
-    rslt = EstimatingEquationsRegression.covsolve(c, mu, sd, zeros(0), rhs)
+    rslt = EstimatingEquationsRegression.covsolve(c, mu, sd, rhs)
     rslt = inv(rslt)
     @test isapprox(rslt[1:2, 3:4], zeros(2, 2))
     @test isapprox(rslt, rslt')
@@ -334,7 +334,7 @@ end
     @test isapprox(pvalue(cst), 0.223437, atol = 1e-5)
 end
 
-@testset "weights" begin
+@testset "frequency weights" begin
 
     Random.seed!(432)
     X = randn(6, 2)
@@ -347,15 +347,15 @@ end
     m1 = fit(GeneralizedEstimatingEquationsModel, X, y, g; d=Normal())
     se1 = sqrt.(diag(vcov(m1)))
 
-    wts = [1.0, 1, 1, 1, 1, 1]
-    m2 = fit(GeneralizedEstimatingEquationsModel, X, y, g; d=Normal(), wts = wts)
+    fwts = [1.0, 1, 1, 1, 1, 1]
+    m2 = fit(GeneralizedEstimatingEquationsModel, X, y, g; d=Normal(), fwts=fwts)
     se2 = sqrt.(diag(vcov(m2)))
 
-    wts = [1.0, 1, 1, 1, 2]
+    fwts = [1.0, 1, 1, 1, 2]
     X1 = X[1:5, :]
     y1 = y[1:5]
     g1 = g[1:5]
-    m3 = fit(GeneralizedEstimatingEquationsModel, X1, y1, g1; d=Normal(), wts=wts)
+    m3 = fit(GeneralizedEstimatingEquationsModel, X1, y1, g1; d=Normal(), fwts=fwts)
     se3 = sqrt.(diag(vcov(m3)))
 
     @test isapprox(coef(m1), coef(m2))

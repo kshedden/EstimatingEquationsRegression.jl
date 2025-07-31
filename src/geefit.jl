@@ -1,6 +1,3 @@
-using Printf
-using GLM
-
 abstract type AbstractMarginalModel <: GLM.AbstractGLM end
 abstract type AbstractGEE <: AbstractMarginalModel end
 
@@ -10,7 +7,7 @@ abstract type AbstractGEE <: AbstractMarginalModel end
 The response vector, grouping information, and vectors derived from
 the response.  Vectors here are all n-dimensional.
 """
-struct GEEResp{T<:Real} <: ModResp
+mutable struct GEEResp{T<:Real} <: ModResp
 
     "`y`: response vector"
     y::Vector{T}
@@ -18,8 +15,11 @@ struct GEEResp{T<:Real} <: ModResp
     "`grpix`: group positions, each column contains positions i1, i2 spanning one group"
     grpix::Matrix{Int}
 
-    "`wts`: case weights"
-    wts::Vector{T}
+    "`awts`: analytic weights, the model variance is scaled by the reciprocal of awts"
+    awts::Vector{T}
+
+    "`fwts`: frequency weights, each observation is replicated by the given weight value"
+    fwts::Vector{T}
 
     "`η`: the linear predictor"
     η::Vector{T}
@@ -127,12 +127,12 @@ mutable struct GeneralizedEstimatingEquationsModel{G<:GEEResp,L<:LinPred} <: Abs
     pp::L
     qq::GEEprop
     cc::GEECov
-    fit::Bool
+    isfitted::Bool
     converged::Bool
 end
 
-function GEEResp(y::Vector{T}, g::Matrix{Int}, wts::Vector{T}, off::Vector{T}) where {T<:Real}
-    return GEEResp{T}(y, g, wts, similar(y), similar(y), similar(y), similar(y),
+function GEEResp(y::Vector{T}, g::Matrix{Int}, awts::Vector{T}, fwts::Vector{T}, off::Vector{T}) where {T<:Real}
+    return GEEResp{T}(y, g, awts, fwts, similar(y), similar(y), similar(y), similar(y),
                       similar(y), similar(y), similar(y), off)
 end
 
@@ -150,7 +150,8 @@ function _iterprep(mod::M) where{M<:AbstractGEE}
     # Update the raw residuals
     rr.resid .= rr.y .- rr.mu
 
-    rr.sd .= geevar.(qq.dist, qq.varfunc, rr.mu)
+    # Get the standard deviation, based on the variance and analytic weights
+    rr.sd .= geevar.(qq.dist, qq.varfunc, rr.mu, rr.awts)
     if minimum(rr.sd) < 1e-10
         @warn("Observation standard deviation is nearly zero")
         rr.sd .= clamp.(rr.sd, 1e-10, Inf)
@@ -174,12 +175,12 @@ function _update_group(mod::M, j::Int, last::Bool) where{M<:AbstractGEE}
 
     i1, i2 = rr.grpix[:, j]
 
+    fwt = weights(mod; type=:frequency)[i1:i2]
     updateD!(pp, rr.dμdη[i1:i2], i1, i2)
-    wts = length(rr.wts) > 0 ? rr.wts[i1:i2] : zeros(0)
-    rr.viresid[i1:i2] .= covsolve(qq.cor, rr.mu[i1:i2], rr.sd[i1:i2], wts, rr.resid[i1:i2])
-    pp.score_grp .= pp.D' * rr.viresid[i1:i2]
+    rr.viresid[i1:i2] .= covsolve(qq.cor, rr.mu[i1:i2], rr.sd[i1:i2], rr.resid[i1:i2])
+    pp.score_grp .= pp.D' * Diagonal(fwt) * rr.viresid[i1:i2]
     pp.score .+= pp.score_grp
-    cc.DtViD_grp .= pp.D' * covsolve(qq.cor, rr.mu[i1:i2], rr.sd[i1:i2], wts, pp.D)
+    cc.DtViD_grp .= pp.D' * Diagonal(fwt) * covsolve(qq.cor, rr.mu[i1:i2], rr.sd[i1:i2], pp.D)
     cc.DtViD_sum .+= cc.DtViD_grp
 
     if last
@@ -222,9 +223,9 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
     for (g, (i1, i2)) in enumerate(eachcol(r.grpix))
 
         # Computation of common quantities
-        wts = length(r.wts) > 0 ? r.wts[i1:i2] : zeros(0)
+        awts = r.awts[i1:i2]
         updateD!(p, r.dμdη[i1:i2], i1, i2)
-        vid = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], wts, p.D)
+        vid = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], p.D)
         vid .= vid ./ di
 
         # Group size
@@ -245,13 +246,13 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
         eval2 = 1 ./ sqrt.(eval)
         eval2[eval.==0] .= 0
         ar = evec * diagm(eval2) * evec' * r.resid[i1:i2]
-        sr = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], wts, real(ar))
+        sr = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], real(ar))
         sr = p.D' * sr
         bcm_kc .+= sr * sr'
 
         # Mancl-DeRouen
         ar = (I(m) - h) \ r.resid[i1:i2]
-        sr = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], wts, ar)
+        sr = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], ar)
         sr = p.D' * sr
         bcm_md .+= sr * sr'
     end
@@ -278,19 +279,15 @@ end
 function get_start(mod::M; maxiter=10, tol=1e-3, verbosity::Int=0) where{M<:AbstractGEE}
 
     (; pp, rr, qq, cc) = mod
-    (; y, offset, wts) = rr
+    (; y, offset, awts) = rr
     (; X) = pp
     (; link, dist) = qq
 
     # Weighted least squares
     if typeof(link) <: IdentityLink
         yy = length(offset) > 0 ? y - offset : y
-        if length(wts) > 0
-            W = Diagonal(wts)
-            return (X' * W * X) \ (X' * W * yy)
-        else
-            return (X' * X) \ (X' * yy)
-        end
+        W = Diagonal(awts)
+        return (X' * W * X) \ (X' * W * yy)
     end
 
     if typeof(link) <: SigmoidLink
@@ -306,7 +303,7 @@ function get_start(mod::M; maxiter=10, tol=1e-3, verbosity::Int=0) where{M<:Abst
         if verbosity > 2
             println("Starting values iteration=$(iter)")
         end
-        updateβ!(pp, pp.score, cc.DtViD_sum; diagonalize=iter < 5, bclip=0.5)
+        update_coef!(pp, pp.score, cc.DtViD_sum; diagonalize=iter < 5, bclip=0.5)
     end
 
     return pp.beta0
@@ -336,10 +333,13 @@ function invert_scaling!(m)
     scrcov ./= xxscale
 end
 
-function _fit!(mod::M, verbosity::Int, maxiter::Integer, atol::Real, rtol::Real,
-               start, fitcoef::Bool, fitcor::Bool, bccor::Bool, inference::Bool) where{M<:AbstractGEE}
+function fit!(mod::M; verbosity::Int=0, maxiter::Integer=100, atol::Float64=1e-6, rtol::Float64=1e-6,
+               start::Vector=Float64[], fitcoef::Bool=true, fitcor::Bool=true, bccor::Bool=false, inference::Bool=true) where{M<:AbstractGEE}
 
-    mod.fit && return mod
+    # Don't refit if the model has already been fit.
+    if mod.isfitted
+        return mod
+    end
 
     (; pp, rr, qq, cc) = mod
     (; score) = pp
@@ -348,9 +348,9 @@ function _fit!(mod::M, verbosity::Int, maxiter::Integer, atol::Real, rtol::Real,
     (; scrcov, nacov, DtViD_sum, DtViD_grp) = cc
 
     # GEE update of coef is not needed in this case
-    independence = typeof(cor) <: IndependenceCor && isnothing(start)
+    independence = typeof(cor) <: IndependenceCor && length(start) == 0
 
-    pp.beta0 = isnothing(start) ? get_start(mod; verbosity=verbosity) : copy(start)
+    pp.beta0 = length(start) == 0 ? get_start(mod; verbosity=verbosity) : copy(start)
     if verbosity > 0
         println("Starting values: ", pp.beta0)
     end
@@ -369,7 +369,7 @@ function _fit!(mod::M, verbosity::Int, maxiter::Integer, atol::Real, rtol::Real,
             break
         end
 
-        updateβ!(pp, score, DtViD_sum)
+        update_coef!(pp, score, DtViD_sum)
 
         if last
             break
@@ -382,8 +382,8 @@ function _fit!(mod::M, verbosity::Int, maxiter::Integer, atol::Real, rtol::Real,
 
     verbosity > 0 && println("completed iterations")
 
-    # The model has been fit
-    mod.fit = true
+    # The model has now been fit
+    mod.isfitted = true
 
     if !inference
         invert_scaling!(mod)
@@ -459,19 +459,27 @@ end
 Distributions.Distribution(q::GEEprop) = q.dist
 Distributions.Distribution(m::GeneralizedEstimatingEquationsModel) = Distribution(m.qq)
 
-Corstruct(m::GeneralizedEstimatingEquationsModel{G,L}) where {G,L} = m.qq.cor
-Varfunc(m::GeneralizedEstimatingEquationsModel{G,L}) where {G,L} = m.qq.varfunc
+corstruct(m::GeneralizedEstimatingEquationsModel{G,L}) where {G,L} = m.qq.cor
+varfunc(m::GeneralizedEstimatingEquationsModel{G,L}) where {G,L} = m.qq.varfunc
+
+function weights(m::GeneralizedEstimatingEquationsModel{G,L}; type::Symbol=:analytic) where {G,L}
+    if type == :analytic
+        return m.rr.awts
+    elseif type == :frequency
+        return m.rr.fwts
+    else
+        error("Weight type $(type) is not supported")
+    end
+end
 
 function GLM.dispersion(m::AbstractGEE)
     r = m.rr.sresid
     if dispersion_parameter(m.qq.dist)
-        if length(m.rr.wts) > 0
-            w = m.rr.wts
-            d = sum(w) - size(m.pp.X, 2)
-            s = sum(i -> w[i] * r[i]^2, eachindex(r)) / d
-        else
-            s = sum(i -> r[i]^2, eachindex(r)) / dof_residual(m)
-        end
+        awts = weights(m; type=:analytic)
+        fwts = weights(m; type=:frequency)
+        X = modelmatrix(m)
+        d = sum(fwts) - size(X, 2)
+        s = sum(i -> fwts[i] * r[i]^2 / awts[i], eachindex(r)) / d
     else
         one(eltype(r))
     end
@@ -542,23 +550,33 @@ dof(x::GeneralizedEstimatingEquationsModel) =
 
 
 # Ensure that X, y, wts, and offset have the same type
-function prepargs(X, y, g, wts, offset)
+function prepargs(X, y, g, awts, fwts, offset)
 
     (gi, mg) = groupix(g)
 
-    if !(size(X, 1) == length(y) == length(g))
+    if !(size(X, 1) == length(y) == length(g) == length(awts) == length(fwts))
         m = @sprintf(
-            "Number of rows in X (%d), y (%d), and g (%d) must match",
+            "Number of rows in X (%d), y (%d), g (%d), awts (%d), and fwts (%d) must match",
             size(X, 1),
             length(y),
-            length(g)
+            length(g),
+            length(atws),
+            length(fwts)
         )
         throw(DimensionMismatch(m))
     end
 
+    if any(awts .< 0)
+        error("Negative 'awts' not allowed.")
+    end
+
+    if any(fwts .< 0)
+        error("Negative 'fwts' not allowed.")
+    end
+
     tl = [typeof(first(X)), typeof(first(y))]
-    if length(wts) > 0
-        push!(tl, typeof(first(wts)))
+    if length(awts) > 0
+        push!(tl, typeof(first(awts)))
     end
     if length(offset) > 0
         push!(tl, typeof(first(offset)))
@@ -566,9 +584,10 @@ function prepargs(X, y, g, wts, offset)
     t = promote_type(tl...)
     X = t.(X)
     y = t.(y)
-    wts = t.(wts)
+    awts = t.(awts)
+    fwts = t.(fwts)
     offset = t.(offset)
-    return X, y, wts, offset, gi, mg
+    return X, y, awts, fwts, offset, gi, mg
 end
 
 # Fake distribution to indicate that the GEE was specified using link and variance
@@ -584,22 +603,27 @@ function fit_quasi(
     c::CorStruct;
     cov_type::String = "robust",
     dofit::Bool = true,
-    wts::AbstractVector{<:Real} = similar(y, 0),
+    awts::AbstractVector{<:Real} = ones(eltype(y), length(y)),
+    fwts::AbstractVector{<:Real} = ones(eltype(y), length(y)),
     offset::AbstractVector{<:Real} = similar(y, 0),
     ddof_scale::Union{Int,Nothing} = nothing,
     scalex::Bool=false,
-    start::Union{Nothing,Vector}=nothing,
+    start::Vector=Float64[],
     fitcoef::Bool=true,
     fitcor::Bool=true,
     bccor::Bool=false,
     inference::Bool=true,
+    verbosity::Int=0,
+    maxiter::Int=100,
+    atol::Float64=1e-6,
+    rtol::Float64=1e-6,
     fitargs...,
 )
-    X, y, wts, offset, gi, mg = prepargs(X, y, g, wts, offset)
-    rr = GEEResp(y, gi, wts, offset)
+    X, y, awts, fwts, offset, gi, mg = prepargs(X, y, g, awts, fwts, offset)
+    rr = GEEResp(y, gi, awts, fwts, offset)
     p = size(X, 2)
     ddof = isnothing(ddof_scale) ? p : ddof_scale
-    res = GeneralizedEstimatingEquationsModel(
+    mod = GeneralizedEstimatingEquationsModel(
         rr,
         DensePred(X, mg; scalex=scalex),
         GEEprop(l, v, c, NoDistribution(), ddof; cov_type),
@@ -608,7 +632,8 @@ function fit_quasi(
         false,
     )
 
-    return dofit ? fit!(res; start=start, fitcoef=fitcoef, fitcor=fitcor, bccor=bccor, inference=inference, fitargs...) : res
+    return dofit ? fit!(mod; verbosity=verbosity, maxiter=maxiter, atol=atol, rtol=rtol, start=start, fitcoef=fitcoef,
+                        fitcor=fitcor, bccor=bccor, inference=inference) : mod
 end
 
 # Traditional GEE fitting function
@@ -621,23 +646,28 @@ function fit_gee(
     l::Link;
     cov_type::String = "robust",
     dofit::Bool = true,
-    wts::AbstractVector{<:Real} = similar(y, 0),
+    awts::AbstractVector{<:Real} = ones(eltype(y), length(y)),
+    fwts::AbstractVector{<:Real} = ones(eltype(y), length(y)),
     offset::AbstractVector{<:Real} = similar(y, 0),
     ddof_scale::Union{Int,Nothing} = nothing,
     scalex::Bool=false,
-    start::Union{Nothing,Vector}=nothing,
+    start::Vector=Float64[],
     fitcoef::Bool=true,
     fitcor::Bool=true,
     bccor::Bool=false,
     inference::Bool=true,
+    verbosity::Int=0,
+    maxiter::Int=100,
+    atol::Float64=1e-6,
+    rtol::Float64=1e-6,
     fitargs...,
 )
-    X, y, wts, offset, gi, mg = prepargs(X, y, g, wts, offset)
+    X, y, awts, fwts, offset, gi, mg = prepargs(X, y, g, awts, fwts, offset)
 
-    rr = GEEResp(y, gi, wts, offset)
+    rr = GEEResp(y, gi, awts, fwts, offset)
     p = size(X, 2)
     ddof = isnothing(ddof_scale) ? p : ddof_scale
-    res = GeneralizedEstimatingEquationsModel(
+    mod = GeneralizedEstimatingEquationsModel(
         rr,
         DensePred(X, mg; scalex=scalex),
         GEEprop(l, DefaultVar(), c, d, ddof; cov_type),
@@ -646,7 +676,8 @@ function fit_gee(
         false,
     )
 
-    return dofit ? fit!(res; start=start, fitcoef=fitcoef, fitcor=fitcor, bccor=bccor, inference=inference, fitargs...) : res
+    return dofit ? fit!(mod; verbosity=verbosity, maxiter=maxiter, atol=atol, rtol=rtol, start=start, fitcoef=fitcoef,
+                        fitcor=fitcor, bccor=bccor, inference=inference) : mod
 end
 
 struct NoDistribution <: ContinuousUnivariateDistribution end
@@ -668,18 +699,18 @@ in the data.  `d` must be a `UnivariateDistribution`, `c` must be a
 to "robust", other options are "naive", "md" (Mancl-DeRouen debiased) and
 "kc" (Kauermann-Carroll debiased).xs
 - `dofit::Bool=true`: Determines whether model will be fit
-- `wts::Vector=similar(y,0)`: Not implemented.
-Can be length 0 to indicate no weighting (default).
+- `awts`: Analytic weights (variance is scaled by 1/awts).
+- `fwts`: Frequency weights (each observation is replicated by the given weight).
 - `offset::Vector=similar(y,0)`: offset added to `Xβ` to form `eta`.  Can be of
-length 0
+length 0 to indicate no offset (defaiult)
 - `verbosity::Int=0`: Display convergence information for each iteration
 - `maxiter::Integer=100`: Maximum number of iterations allowed to achieve convergence
 - `atol::Real=1e-6`: Convergence is achieved when the relative change in
 `β` is less than `max(rtol*dev, atol)`.
 - `rtol::Real=1e-6`: Convergence is achieved when the relative change in
 `β` is less than `max(rtol*dev, atol)`.
-- `start::AbstractVector=nothing`: Starting values for beta. Should have the
-same length as the number of columns in the model matrix.
+- `start::Vector=[]`: Starting values for coefficients. Must have the
+same length as the number of columns in the model matrix, or empty.
 - `fitcoef::Bool=true`: If false, set the coefficients equal to the GLM coefficients
 or to `start` if provided, and update the correlation parameters and dispersion without
 using GEE iterations to update the coefficients.`
@@ -699,14 +730,18 @@ function fit(
     v::Varfunc = DefaultVar(),
     cov_type::String = "robust",
     dofit::Bool = true,
-    wts::AbstractVector{<:Real} = similar(y, 0),
+    awts::AbstractVector{<:Real} = ones(eltype(y), length(y)),
+    fwts::AbstractVector{<:Real} = ones(eltype(y), length(y)),
     offset::AbstractVector{<:Real} = similar(y, 0),
     ddof_scale::Union{Int,Nothing} = nothing,
     scalex::Bool=false,
-    start::Union{Nothing,Vector}=nothing,
+    start::Vector=Float64[],
     fitcoef::Bool=true,
     fitcor::Bool=true,
     bccor::Bool=false,
+    verbosity::Int=0,
+    atol::Float64=1e-6,
+    rtol::Float64=1e-6,
     fitargs...,
 )
 
@@ -715,13 +750,13 @@ function fit(
     end
 
     if typeof(d) <: NoDistribution
-        return fit_quasi(X, y, g, l, v, c; cov_type=cov_type, dofit=dofit, wts=wts, offset=offset,
+        return fit_quasi(X, y, g, l, v, c; cov_type=cov_type, dofit=dofit, awts=awts, fwts=fwts, offset=offset,
                          ddof_scale=ddof_scale, scalex=scalex, start=start, fitcoef=fitcoef,
-                         fitcor=fitcor, bccor=bccor, fitargs=fitargs)
+                         fitcor=fitcor, bccor=bccor, fitargs=fitargs, verbosity=verbosity, atol=atol, rtol=rtol)
     else
-        return fit_gee(X, y, g, d, c, l; cov_type=cov_type, dofit=dofit, wts=wts, offset=offset,
+        return fit_gee(X, y, g, d, c, l; cov_type=cov_type, dofit=dofit, awts=awts, fwts=fwts, offset=offset,
                        ddof_scale=ddof_scale, scalex=scalex, start=start, fitcoef=fitcoef,
-                       fitcor=fitcor, bccor=bccor, fitargs=fitargs)
+                       fitcor=fitcor, bccor=bccor, fitargs=fitargs, verbosity=verbosity, atol=atol, rtol=rtol)
     end
 end
 
@@ -734,22 +769,6 @@ See [`fit`](@ref) for documentation.
 gee(F, D, args...; kwargs...) =
     fit(GeneralizedEstimatingEquationsModel, F, D, args...; kwargs...)
 
-
-function fit!(
-    m::AbstractGEE;
-    verbosity::Integer = 0,
-    maxiter::Integer = 50,
-    atol::Real = 1e-6,
-    rtol::Real = 1e-6,
-    start = nothing,
-    fitcoef::Bool = true,
-    fitcor::Bool = true,
-    bccor::Bool = false,
-    inference::Bool=true,
-    kwargs...,
-)
-    _fit!(m, verbosity, maxiter, atol, rtol, start, fitcoef, fitcor, bccor, inference)
-end
 
 """
     corparams(m::AbstractGEE)
@@ -821,4 +840,5 @@ function predict(m::AbstractGEE, newX::AbstractMatrix; type=:linear, offset=noth
     return pr
 end
 
+isfitted(gee::GeneralizedEstimatingEquationsModel) = gee.isfitted
 varfunc(gee::GeneralizedEstimatingEquationsModel) = gee.qq.varfunc

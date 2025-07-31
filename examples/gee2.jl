@@ -1,6 +1,7 @@
 using StableRNGs
 using EstimatingEquationsRegression
 using Statistics
+using LinearAlgebra
 
 rng = StableRNG(1)
 n = 1000
@@ -17,7 +18,6 @@ Xv[:, 1] .= 1
 beta_v = [-0.4, 0.5, -0.5, 0.0]
 Vy = Ey .* exp.(Xv * beta_v)
 Xr = randn(rng, N, 2)
-Xr[:, 1] .= 1
 
 beta_r = [EstimatingEquationsRegression.linkfun(SigmoidLink(-1, 1), r), 0, 0]
 beta = vcat(beta_m, beta_v, beta_r)
@@ -46,4 +46,3 @@ end
 B, Z = main()
 
 # use std(Z; dims=1) to assess the results
-

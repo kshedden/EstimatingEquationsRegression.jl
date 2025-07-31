@@ -16,25 +16,25 @@ struct PowerVar <: Varfunc
     p::Float64
 end
 
-geevar(d::Normal, v::DefaultVar, mu::T) where {T<:Real} = 1
-geevar(d::Poisson, v::DefaultVar, mu::T) where {T<:Real} = mu
-geevar(d::Binomial, v::DefaultVar, mu::T) where {T<:Real} = mu * (1 - mu)
-geevar(d::Gamma, v::DefaultVar, mu::T) where {T<:Real} = mu^2
+geevar(d::Normal, v::DefaultVar, mu::T, awt::T) where {T<:Real} = 1 / awt
+geevar(d::Poisson, v::DefaultVar, mu::T, awt::T) where {T<:Real} = mu / awt
+geevar(d::Binomial, v::DefaultVar, mu::T, awt::T) where {T<:Real} = mu * (1 - mu) / awt
+geevar(d::Gamma, v::DefaultVar, mu::T, awt::T) where {T<:Real} = mu^2 / awt
 
-geevar(::Distribution, v::ConstantVar, mu::T) where {T<:Real} = 1
-geevar(::Distribution, v::IdentityVar, mu::T) where {T<:Real} = mu
-geevar(::Distribution, v::PowerVar, mu::T) where {T<:Real} = mu^v.p
-geevar(::Distribution, v::BinomialVar, mu::T) where {T<:Real} = mu*(1-mu)
+geevar(::Distribution, v::ConstantVar, mu::T, awt::T) where {T<:Real} = 1 / awt
+geevar(::Distribution, v::IdentityVar, mu::T, awt::T) where {T<:Real} = mu / awt
+geevar(::Distribution, v::PowerVar, mu::T, awt::T) where {T<:Real} = mu^v.p / awt
+geevar(::Distribution, v::BinomialVar, mu::T, awt::T) where {T<:Real} = mu * (1 - mu) / awt
 
-geevarderiv(d::Normal, v::DefaultVar, mu::T) where {T<:Real} = zero(T)
-geevarderiv(d::Poisson, v::DefaultVar, mu::T) where {T<:Real} = one(T)
-geevarderiv(d::Binomial, v::DefaultVar, mu::T) where {T<:Real} = 1 - 2*mu
-geevarderiv(d::Gamma, v::DefaultVar, mu::T) where {T<:Real} = 2*mu
+geevarderiv(d::Normal, v::DefaultVar, mu::T, awt::T) where {T<:Real} = zero(T)
+geevarderiv(d::Poisson, v::DefaultVar, mu::T, awt::T) where {T<:Real} = one(T) / awt
+geevarderiv(d::Binomial, v::DefaultVar, mu::T, awt::T) where {T<:Real} = (1 - 2*mu) / awt
+geevarderiv(d::Gamma, v::DefaultVar, mu::T, awt::T) where {T<:Real} = 2*mu / awt
 
-geevarderiv(::Distribution, v::ConstantVar, mu::T) where {T<:Real} = zero(T)
-geevarderiv(::Distribution, v::IdentityVar, mu::T) where {T<:Real} = one(T)
-geevarderiv(::Distribution, v::PowerVar, mu::T) where {T<:Real} = v.p * mu^(v.p - 1)
-geevarderiv(::Distribution, v::BinomialVar, mu::T) where {T<:Real} = 1 - 2*mu
+geevarderiv(::Distribution, v::ConstantVar, mu::T, awt::T) where {T<:Real} = zero(T)
+geevarderiv(::Distribution, v::IdentityVar, mu::T, awt::T) where {T<:Real} = one(T) / awt
+geevarderiv(::Distribution, v::PowerVar, mu::T, awt::T) where {T<:Real} = v.p * mu^(v.p - 1) / awt
+geevarderiv(::Distribution, v::BinomialVar, mu::T, awt::T) where {T<:Real} = (1 - 2*mu) / awt
 
-geevar(v::Varfunc, mu::T) where {T<:Real} = geevar(NoDistribution(), v, mu)
-geevarderiv(v::Varfunc, mu::T) where {T<:Real} = geevarderiv(NoDistribution(), v, mu)
+geevar(v::Varfunc, mu::T, awt::T) where {T<:Real} = geevar(NoDistribution(), v, mu, awt)
+geevarderiv(v::Varfunc, mu::T, awt::T) where {T<:Real} = geevarderiv(NoDistribution(), v, mu, awt)
