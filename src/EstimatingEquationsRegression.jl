@@ -35,7 +35,7 @@ export expand_ordinal
 export GEEE, geee
 
 # GEE2 exports
-export GeneralizedEstimatingEquations2Model, SigmoidLink
+export GeneralizedEstimatingEquations2Model, SigmoidLink, GEE2VCov
 
 # GLM exports
 export IdentityLink, LogLink, LogitLink, canonicallink
@@ -58,5 +58,6 @@ include("utils.jl")
 include("expectiles.jl")
 include("qif.jl")
 include("gee2.jl")
+include("vcov_multi.jl")
 
 end

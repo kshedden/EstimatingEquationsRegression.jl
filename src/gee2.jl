@@ -1,3 +1,9 @@
+mutable struct GEE2VCov{T<:Real}
+    vcov::Matrix{T}
+    M::Matrix{T}
+    B::Matrix{T}
+end
+
 mutable struct GeneralizedEstimatingEquations2Model <: AbstractGEE
 
     # GEE model for the mean structure
@@ -25,7 +31,7 @@ mutable struct GeneralizedEstimatingEquations2Model <: AbstractGEE
 
     # The variance/covariance matrix of the parameters, or an empty
     # matrix if it has not yet been constructed.
-    vcov::Matrix{Float64}
+    vcov::GEE2VCov
 end
 
 struct SigmoidLink <: Link
@@ -130,7 +136,8 @@ function GeneralizedEstimatingEquations2Model(Xm::Union{AbstractMatrix,DataFrame
                         v=varfunc_cor, c=corstruct_cor, d=NoDistribution(), dofit=false)
     end
 
-    return GeneralizedEstimatingEquations2Model(mean_model, scale_model, cor_model, cp, false, false, mean_tablemodel, zeros(0, 0))
+    vcov = GEE2VCov(zeros(0, 0), zeros(0, 0), zeros(0, 0))
+    return GeneralizedEstimatingEquations2Model(mean_model, scale_model, cor_model, cp, false, false, mean_tablemodel, vcov)
 end
 
 function fit(::Type{GeneralizedEstimatingEquations2Model}, Xm::Union{AbstractMatrix,AbstractDataFrame},
@@ -330,9 +337,9 @@ end
 
 function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
 
-    if size(gee.vcov, 1) > 0
+    if size(gee.vcov.vcov, 1) > 0
         # The vcov has already been computed
-        return gee.vcov
+        return gee.vcov.vcov
     end
 
     (; mean_model, scale_model, cor_model) = gee
@@ -451,16 +458,20 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
     end
 
     try
-        gee.vcov = B \ M / B'
+        gee.vcov.vcov = B \ M / B'
+        gee.vcov.B = B
+        gee.vcov.M = M
     catch e
         println("Using pseudo-inverse to construct parameter covariance matrix")
         display(B)
         display(M)
         BI = pinv(B)
-        gee.vcov = BI * M * BI'
+        gee.vcov.vcov = BI * M * BI'
+        gee.vcov.B = B
+        gee.vcov.M = M
     end
 
-    return gee.vcov
+    return gee.vcov.vcov
 end
 
 function coef(mm::GeneralizedEstimatingEquations2Model)
@@ -530,4 +541,16 @@ function coefnames(mm::GeneralizedEstimatingEquations2Model)
     vnames3 = ["Cor X$(i)" for i in 1:r]
     vnames = vcat(vnames1, vnames2, vnames3)
     return vnames
+end
+
+function isfitted(gee::GeneralizedEstimatingEquations2Model)
+    f = isfitted(gee.mean_model) & isfitted(gee.scale_model)
+    if !isnothing(gee.cor_model)
+        f = f & isfitted(gee.cor_model)
+    end
+    return f
+end
+
+function residuals(m::GeneralizedEstimatingEquations2Model)
+    return residuals(m.mean_model)
 end
