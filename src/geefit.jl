@@ -153,7 +153,7 @@ function _iterprep(mod::M) where{M<:AbstractGEE}
     # Get the standard deviation, based on the variance and analytic weights
     rr.sd .= geevar.(qq.dist, qq.varfunc, rr.mu, rr.awts)
     if minimum(rr.sd) < 1e-10
-        @warn("Observation standard deviation is nearly zero")
+        @warn("Some observation variances are nearly zero")
         rr.sd .= clamp.(rr.sd, 1e-10, Inf)
     end
     rr.sd .= sqrt.(rr.sd)
@@ -560,7 +560,7 @@ function prepargs(X, y, g, awts, fwts, offset)
             size(X, 1),
             length(y),
             length(g),
-            length(atws),
+            length(awts),
             length(fwts)
         )
         throw(DimensionMismatch(m))

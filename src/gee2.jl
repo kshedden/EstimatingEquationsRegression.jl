@@ -57,7 +57,7 @@ function mueta(sl::SigmoidLink, x::Real)
     return sl.range / ((1 + exp(-x)) * (1 + exp(x)))
 end
 
-function build_rcov(Xr, gi, cp, make_rcov)
+function build_rcov(Xr, fwts, gi, cp, make_rcov)
 
     m = sum(x->size(x, 1), cp)
 
@@ -66,6 +66,7 @@ function build_rcov(Xr, gi, cp, make_rcov)
     p = length(u)
 
     X = zeros(m, p)
+    fwtsr = zeros(m)
     gr = zeros(m)
 
     ii = 1
@@ -76,11 +77,12 @@ function build_rcov(Xr, gi, cp, make_rcov)
             i2 += gi[1, j] - 1
             X[ii, :] = make_rcov(Xr[i1, :], Xr[i2, :])
             gr[ii] = j
+            fwtsr[ii] = sqrt(fwts[i1] * fwts[i2])
             ii += 1
         end
     end
 
-    return X, gr
+    return X, fwtsr, gr
 end
 
 function gee2_check_arrays(y, g, Xm, Xv, Xr)
@@ -106,34 +108,41 @@ function GeneralizedEstimatingEquations2Model(Xm::Union{AbstractMatrix,DataFrame
                                               make_rcov; mean_fml=nothing, link_mean=IdentityLink(), varfunc_mean=ConstantVar(),
                                               corstruct_mean=IndependenceCor(), link_scale=LogLink(), varfunc_scale=IdentityVar(), corstruct_scale=IndependenceCor(),
                                               link_cor=SigmoidLink(-1, 1), varfunc_cor=ConstantVar(),
-                                              corstruct_cor=IndependenceCor(), cor_pair_factor::Float64=0)
+                                              corstruct_cor=IndependenceCor(), cor_pair_factor::Float64=0, fwts=nothing)
 
     cp = Vector{Matrix{Int}}(undef, 0)
 
     mean_tablemodel = nothing
 
+    fwtsv = if isnothing(fwts)
+        n = size(Xm, 1)
+        ones(n)
+    else
+        fwts
+    end
+
     if typeof(mean_fml) <: AbstractTerm
         mean_tablemodel = fit(GeneralizedEstimatingEquationsModel, mean_fml, Xm, g; l=link_mean, v=varfunc_mean,
-                              c=corstruct_mean, d=NoDistribution(), dofit=false)
+                              c=corstruct_mean, d=NoDistribution(), dofit=false, fwts=fwtsv)
         mean_model = mean_tablemodel.model
     else
         gee2_check_arrays(y, g, Xm, Xv, Xr)
         mean_model = fit(GeneralizedEstimatingEquationsModel, Xm, y, g; l=link_mean, v=varfunc_mean,
-                         c=corstruct_mean, d=NoDistribution(), dofit=false)
+                         c=corstruct_mean, d=NoDistribution(), dofit=false, fwts=fwtsv)
     end
 
     n = length(response(mean_model))
     scale_model = fit(GeneralizedEstimatingEquationsModel, Xv, zeros(n), g; l=link_scale, v=varfunc_scale,
-                    c=corstruct_scale, d=NoDistribution(), dofit=false)
+                    c=corstruct_scale, d=NoDistribution(), dofit=false, fwts=fwtsv)
 
     if isnothing(Xr)
         cor_model = nothing
     else
         (gi, mg) = groupix(g)
         cp = make_cor_pairs(gi, cor_pair_factor)
-        Xrm, gr = build_rcov(Xr, gi, cp, make_rcov)
+        Xrm, fwtsr, gr = build_rcov(Xr, fwtsv, gi, cp, make_rcov)
         cor_model = fit(GeneralizedEstimatingEquationsModel, Xrm, zeros(size(Xrm, 1)), gr; l=link_cor,
-                        v=varfunc_cor, c=corstruct_cor, d=NoDistribution(), dofit=false)
+                        v=varfunc_cor, c=corstruct_cor, d=NoDistribution(), dofit=false, fwts=fwtsr)
     end
 
     vcov = GEE2VCov(zeros(0, 0), zeros(0, 0), zeros(0, 0))
@@ -145,13 +154,13 @@ function fit(::Type{GeneralizedEstimatingEquations2Model}, Xm::Union{AbstractMat
              mean_fml=nothing, link_mean=IdentityLink(), varfunc_mean=ConstantVar(), corstruct_mean=IndependenceCor(),
              link_scale=LogLink(), varfunc_scale=PowerVar(2), corstruct_scale=IndependenceCor(),
              link_cor=SigmoidLink(-1, 1), varfunc_cor=ConstantVar(), corstruct_cor=IndependenceCor(), dofit=true,
-             verbosity=0, maxiter=10, cor_pair_factor::Float64=0.0)
+             verbosity=0, maxiter=10, cor_pair_factor::Float64=0.0, fwts=nothing)
 
     gee = GeneralizedEstimatingEquations2Model(Xm, Xv, Xr, y, g, make_rcov; mean_fml=mean_fml,
                                                link_mean=link_mean, varfunc_mean=varfunc_mean, corstruct_mean=corstruct_mean,
                                                link_scale=link_scale, varfunc_scale=varfunc_scale, corstruct_scale=corstruct_scale,
                                                link_cor=link_cor, varfunc_cor=varfunc_cor, corstruct_cor=corstruct_cor,
-                                               cor_pair_factor=cor_pair_factor)
+                                               cor_pair_factor=cor_pair_factor, fwts=fwts)
 
     if dofit
         fit!(gee, verbosity=verbosity, maxiter=maxiter)
@@ -174,6 +183,14 @@ function update_gee2!(gee::GeneralizedEstimatingEquations2Model, stage; verbosit
     # Variance contribution from the mean/variance relationship
     awts1 = ones(length(mn))
     vm = geevar.(varfunc(mean_model), mn, awts1)
+
+    b = sum(x->x<0.01, vm)
+    if b > 0
+        if verbosity > 1
+            println("Clamping $(b) small variances")
+        end
+        vm = clamp.(vm, 0.01, Inf)
+    end
 
     # Update the response for the scale parameter estimation
     scale_model.rr.y .= resid.^2 ./ vm
