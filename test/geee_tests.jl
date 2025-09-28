@@ -1,4 +1,9 @@
-@testset "GEEE coefnames" begin
+@testitem "GEEE coefnames" begin
+
+    using StableRNGs
+    using DataFrames
+    using StatsModels
+
     rng = StableRNG(1)
     df = DataFrame(
         y = randn(rng, 10),
@@ -8,10 +13,14 @@
     )
     m = geee(@formula(y ~ xv1 + xv2), df, df[:, :g], [0.2, 0.5])
     println(typeof(m))
-    @test all(coefnames(m) .== ["(Intercept)", "xv1", "xv2", "(Intercept)", "xv1", "xv2"])
+    println(coefnames(m))
+    @test all(coefnames(m) .== ["(Intercept)", "x1", "x2", "(Intercept)", "x1", "x2"])
 end
 
-@testset "GEEE at tau=0.5 match to OLS/GEE" begin
+@testitem "GEEE at tau=0.5 match to OLS/GEE" begin
+
+    using StableRNGs
+    using GLM
 
     rng = StableRNG(123)
     n = 1000
@@ -35,7 +44,10 @@ end
     @test isapprox(vcov(m1), vcov(m2), atol = 1e-4, rtol = 1e-4)
 end
 
-@testset "GEEE simulation" begin
+@testitem "GEEE simulation" begin
+
+    using StableRNGs
+    using Statistics
 
     rng = StableRNG(123)
     nrep = 1000

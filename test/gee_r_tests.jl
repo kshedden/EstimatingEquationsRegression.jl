@@ -1,40 +1,9 @@
+@testitem "Check linear model versus R" setup=[Gendat] begin
 
-function gendat(ngroup, gsize, p, r, rng, dist)
-
-    # Sample size per group
-    n = 1 .+ rand(Poisson(gsize), ngroup)
-    N = sum(n)
-
-    # Group labels
-    id = vcat([fill(i, n[i]) for i in eachindex(n)]...)
-
-    # Random intercepts
-    ri = randn(ngroup)
-    ri = ri[id]
-
-    X = randn(N, p)
-    for j in 2:p
-        X[:, j] = r*X[:, j-1] + sqrt(1-r^2)*X[:, j]
-    end
-
-    lp = X[:, 1] - 2*X[:, 2]
-
-    if dist == :Gaussian
-        ey = lp
-        y = ey + ri + randn(N)
-    elseif dist == :Poisson
-        ey = exp.(0.2*lp)
-        e = (ri + randn(N)) / sqrt(2)
-        u = map(Base.Fix1(cdf, Normal()), e)
-        y = quantile.(Poisson.(ey), u)
-    else
-        error("Invalid distribution")
-    end
-
-    return (id=id, X=X, y=y, ey=ey)
-end
-
-@testset "Check linear model versus R" begin
+    using StableRNGs
+    using DataFrames
+    using StatsModels
+    using RCall
 
     rng = StableRNG(123)
 
@@ -66,14 +35,14 @@ end
 
     f = @formula(y ~ x1 + x2 + x3 + x4 + x5)
 
-    m0 = gee(f, da, da[:, :id], IdentityLink(), ConstantVar(), IndependenceCor(), atol=1e-12, rtol=1e-12)
+    m0 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :id]; l=IdentityLink(), v=ConstantVar(), c=IndependenceCor(), atol=1e-12, rtol=1e-12)
     jc0 = coef(m0)
     jv0 = vcov(m0)
 
     @test isapprox(rc0, jc0, rtol=1e-4, atol=1e-6)
     @test isapprox(rv0, jv0; rtol=1e-3, atol=1e-3)
 
-    m1 = gee(f, da, da[:, :id], IdentityLink(), ConstantVar(), ExchangeableCor(), atol=1e-12, rtol=1e-12)
+    m1 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :id]; l=IdentityLink(), v=ConstantVar(), c=ExchangeableCor(), atol=1e-12, rtol=1e-12)
     jc1 = coef(m1)
     jv1 = vcov(m1)
 
@@ -81,7 +50,12 @@ end
     @test isapprox(rv1, jv1, rtol=1e-3, atol=1e-3)
 end
 
-@testset "Check Poisson model versus R" begin
+@testitem "Check Poisson model versus R" setup=[Gendat] begin
+
+    using StableRNGs
+    using DataFrames
+    using StatsModels
+    using RCall
 
     rng = StableRNG(123)
 
@@ -117,14 +91,14 @@ end
 
     f = @formula(y ~ x1 + x2 + x3 + x4 + x5)
 
-    m0 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :id], LogLink(), IdentityVar(), IndependenceCor();
+    m0 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :id]; d=NoDistribution(), l=LogLink(), v=IdentityVar(), c=IndependenceCor(),
              atol=1e-12, rtol=1e-12)
     c0 = coef(m0)
     v0 = vcov(m0)
     @test isapprox(rc0, c0, rtol=1e-3, atol=1e-3)
     @test isapprox(rv0, v0, rtol=1e-3, atol=1e-3)
 
-    m1 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :id], LogLink(), IdentityVar(), ExchangeableCor();
+    m1 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :id]; d=NoDistribution(), l=LogLink(), v=IdentityVar(), c=ExchangeableCor(),
              atol=1e-12, rtol=1e-12)
     c1 = coef(m1)
     v1 = vcov(m1)

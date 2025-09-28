@@ -371,6 +371,10 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
     # The fitted scale parameter
     scale = predict(scale_model; type=:response)
 
+    # Frequency weights
+    fwtsm = weights(mean_model; type=:frequency)
+    fwtsr = isnothing(cor_model) ? Float64[] : weights(cor_model; type=:frequency)
+
     # The variance function and its derivative, do not include
     # the scale function via analytic weights here.
     awts1 = ones(length(mn))
@@ -427,7 +431,7 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
         u = -2 * resid1 .* v1 .- resid1.^2 .* vd1
         U = (Diagonal(u) * mean_model.pp.D) ./ v1.^2
         C = covsolve(scale_model.qq.cor, scale_model.rr.mu[i1:i2], scale_model.rr.sd[i1:i2], U)
-        B[p+1:p+q, 1:p] .-= scale_model.pp.D' * C
+        B[p+1:p+q, 1:p] .-= scale_model.pp.D' * Diagonal(fwtsm[i1:i2]) * C
 
         if isnothing(cor_model) || size(gee.cor_pairs[j], 1) == 0
             continue
@@ -457,14 +461,14 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
         qf = sqrt.(va1[ix[:, 1]] .* va1[ix[:, 2]])
         U = Diagonal(1 ./ qf) * U
         C = covsolve(cor_model.qq.cor, cor_mu1, cor_sd1, U)
-        B[p+q+1:p+q+r, 1:p] .-= cor_model.pp.D' * C
+        B[p+q+1:p+q+r, 1:p] .-= cor_model.pp.D' * Diagonal(fwtsr[j1:j2]) * C
 
         # Bread matrix E in Yan and Fine
         U = Diagonal(1 ./ scale1[ix[:, 1]]) * scale_model.pp.D[ix[:, 1], :]
         U .+= Diagonal(1 ./ scale1[ix[:, 2]]) * scale_model.pp.D[ix[:, 2], :]
         U = Diagonal(-0.5 * qp ./ qf) * U
         C = covsolve(cor_model.qq.cor, cor_mu1, cor_sd1, U)
-        B[p+q+1:p+q+r, p+1:p+q] .-= cor_model.pp.D' * C
+        B[p+q+1:p+q+r, p+1:p+q] .-= cor_model.pp.D' * Diagonal(fwtsr[j1:j2]) * C
     end
 
     # Fill in the other blocks by transposing
@@ -545,8 +549,10 @@ function show(io::IO, mm::GeneralizedEstimatingEquations2Model)
     ta = [@sprintf("Num obs: %d", nobs(mm)) "Num obs (cor): $(nr)";
           "Num groups: $(ngrp)" @sprintf("Avg grp size: %.1f", mean(gsize));
           @sprintf("Min grp size: %d", minimum(gsize)) @sprintf("Max grp size: %d", maximum(gsize))]
-    pretty_table(io, ta; tf=tf_borderless, show_header=false, alignment=:l)
-   show(io, coeftable(mm))
+
+    tf = TextTableFormat(borders=text_table_borders__compact)
+    pretty_table(io, ta; table_format=tf, show_column_labels=false)
+    show(io, coeftable(mm))
 end
 
 function coefnames(mm::GeneralizedEstimatingEquations2Model)

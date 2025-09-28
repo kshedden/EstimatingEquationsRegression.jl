@@ -454,6 +454,12 @@ function coef(m::QIF)
     return m.beta
 end
 
+function coefnames(m::QIF)
+    p = length(coef(m))
+    xn = ["x$(j)" for j in 1:p]
+    return xn
+end
+
 function vcov(m::QIF)
     p = length(m.beta)
     q = length(m.basis)

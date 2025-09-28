@@ -1,4 +1,7 @@
-@testset "Test some properties of the joint multivariate vcov" begin
+@testitem "Test some properties of the joint multivariate vcov" begin
+
+    using StableRNGs
+    using LinearAlgebra
 
     rng = StableRNG(1)
     n = 500

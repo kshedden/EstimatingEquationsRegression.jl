@@ -1,4 +1,7 @@
-@testset "Check offset" begin
+@testitem "Check offset" setup=[Gendat] begin
+
+    using StableRNGs
+    using Distributions
 
     y, _, X, g, df = data1()
     rng = StableRNG(123)
@@ -23,7 +26,9 @@
     end
 end
 
-@testset "Equivalence of distribution-based and variance function-based interfaces (Gaussian/linear)" begin
+@testitem "Equivalence of distribution-based and variance function-based interfaces (Gaussian/linear)" setup=[Gendat] begin
+
+    using StatsModels
 
     y, _, X, g, df = data1()
 
@@ -43,7 +48,10 @@ end
     @test isapprox(corparams(m1), corparams(m2))
 end
 
-@testset "Equivalence of distribution-based and variance function-based interfaces (Binomial/logit)" begin
+@testitem "Equivalence of distribution-based and variance function-based interfaces (Binomial/logit)" setup=[Gendat] begin
+
+    using Distributions
+    using StatsModels
 
     _, y, X, g, df = data1()
     cs = ExchangeableCor()
@@ -65,7 +73,10 @@ end
     @test isapprox(corparams(m1), corparams(m2))
 end
 
-@testset "Equivalence of distribution-based and variance function-based interfaces (Poisson/log)" begin
+@testitem "Equivalence of distribution-based and variance function-based interfaces (Poisson/log)" setup=[Gendat] begin
+
+    using Distributions
+    using StatsModels
 
     y, _, X, g, df = data1()
 
@@ -85,7 +96,10 @@ end
     @test isapprox(corparams(m1), corparams(m2))
 end
 
-@testset "linear/normal autoregressive model" begin
+@testitem "linear/normal autoregressive model" setup=[Gendat] begin
+
+    using LinearAlgebra
+    using Distributions
 
     y, _, X, g, _ = data1()
     m = fit(GeneralizedEstimatingEquationsModel, X, y, g; d=Normal(), c=AR1Cor())
@@ -97,7 +111,10 @@ end
     @test isapprox(corparams(m), -0.696, atol=1e-3)
 end
 
-@testset "logit/binomial autoregressive model" begin
+@testitem "logit/binomial autoregressive model" setup=[Gendat] begin
+
+    using LinearAlgebra
+    using Distributions
 
     _, z, X, g, _ = data1()
     m = fit(GeneralizedEstimatingEquationsModel, X, z, g; d=Binomial(), c=AR1Cor())
@@ -109,7 +126,10 @@ end
     @test isapprox(corparams(m), -0.163, atol=1e-3)
 end
 
-@testset "log/Poisson autoregressive model" begin
+@testitem "log/Poisson autoregressive model" setup=[Gendat] begin
+
+    using LinearAlgebra
+    using Distributions
 
     y, _, X, g, _ = data1()
     m = fit(GeneralizedEstimatingEquationsModel, X, y, g; d=Poisson(), c=AR1Cor())
@@ -121,7 +141,10 @@ end
     @test isapprox(corparams(m), -0.722, atol=1e-3)
 end
 
-@testset "log/Gamma autoregressive model" begin
+@testitem "log/Gamma autoregressive model" setup=[Gendat] begin
+
+    using LinearAlgebra
+    using Distributions
 
     y, _, X, g, _ = data1()
     m = fit(GeneralizedEstimatingEquationsModel, X, y, g; d=Gamma(), c=AR1Cor(), l=LogLink())
@@ -133,41 +156,48 @@ end
     @test isapprox(corparams(m), -0.7132, atol=1e-3)
 end
 
-@testset "AR1 covsolve" begin
+@testitem "AR1 covsolve" begin
 
-    Random.seed!(123)
+    using StableRNGs
+    using LinearAlgebra
+
+    rng = StableRNG(123)
+
     makeAR = (r, d) -> [r^abs(i - j) for i = 1:d, j = 1:d]
 
     for d in [1, 2, 4]
         for q in [1, 3]
 
             c = AR1Cor(0.4)
-            v = q == 1 ? randn(d) : randn(d, q)
-            sd = rand(d)
-            mu = rand(d)
+            v = q == 1 ? randn(rng, d) : randn(rng, d, q)
+            sd = rand(rng, d)
+            mu = rand(rng, d)
             sm = Diagonal(sd)
 
             mat = makeAR(0.4, d)
             vi = (sm \ (mat \ (sm \ v)))
             vi2 = EstimatingEquationsRegression.covsolve(c, mu, sd, v)
             @test isapprox(vi, vi2)
-
         end
     end
 end
 
-@testset "Exchangeable covsolve" begin
+@testitem "Exchangeable covsolve" begin
 
-    Random.seed!(123)
+    using StableRNGs
+    using LinearAlgebra
+
+    rng = StableRNG(123)
+
     makeEx = (r, d) -> [i == j ? 1 : r for i = 1:d, j = 1:d]
 
     for d in [1, 2, 4]
         for q in [1, 3]
 
             c = ExchangeableCor(0.4)
-            v = q == 1 ? randn(d) : randn(d, q)
-            mu = rand(d)
-            sd = rand(d)
+            v = q == 1 ? randn(rng, d) : randn(rng, d, q)
+            mu = rand(rng, d)
+            sd = rand(rng, d)
             sm = Diagonal(sd)
 
             mat = makeEx(0.4, d)
@@ -178,15 +208,15 @@ end
     end
 end
 
-@testset "OrdinalIndependence covsolve" begin
+@testitem "OrdinalIndependence covsolve" begin
 
-    Random.seed!(123)
+    using LinearAlgebra
 
     c = OrdinalIndependenceCor(2)
 
     mu = [0.2, 0.3, 0.4, 0.5]
     sd = mu .* (1 .- mu)
-    rhs = Array{Float64}(I(4))
+    rhs = Matrix{Float64}(I(4))
 
     rslt = EstimatingEquationsRegression.covsolve(c, mu, sd, rhs)
     rslt = inv(rslt)
@@ -195,7 +225,13 @@ end
     @test isapprox(diag(rslt), mu .* (1 .- mu))
 end
 
-@testset "linear/normal independence model" begin
+@testitem "linear/normal independence model" setup=[Gendat] begin
+
+    using LinearAlgebra
+    using Distributions
+    using GLM
+    using Printf
+    using DataFrames
 
     y, _, X, g, _ = data1()
     m = fit(GeneralizedEstimatingEquationsModel, X, y, g; d=Normal(), c=IndependenceCor())
@@ -247,7 +283,12 @@ end
     @test isapprox(pvalue(cst), 0.24548, atol = 1e-4)
 end
 
-@testset "logit/Binomial independence model" begin
+@testitem "logit/Binomial independence model" setup=[Gendat] begin
+
+    using LinearAlgebra
+    using Distributions
+    using GLM
+
     _, y, X, g, _ = data1()
     m = fit(GeneralizedEstimatingEquationsModel, X, y, g; d=Binomial(), c=IndependenceCor(), l=LogitLink())
     se = sqrt.(diag(vcov(m)))
@@ -276,7 +317,12 @@ end
     @test isapprox(pvalue(cst), 0.25024, atol = 1e-4)
 end
 
-@testset "log/Poisson independence model" begin
+@testitem "log/Poisson independence model" setup=[Gendat] begin
+
+    using LinearAlgebra
+    using Distributions
+    using GLM
+
     y, _, X, g, _ = data1()
     m = fit(GeneralizedEstimatingEquationsModel, X, y, g; d=Poisson(), c=IndependenceCor(), l=LogLink())
     se = sqrt.(diag(vcov(m)))
@@ -305,7 +351,12 @@ end
     @test isapprox(pvalue(cst), 0.229757, atol = 1e-5)
 end
 
-@testset "log/Gamma independence model" begin
+@testitem "log/Gamma independence model" setup=[Gendat] begin
+
+    using LinearAlgebra
+    using Distributions
+    using GLM
+
     y, _, X, g, _ = data1()
     m = fit(GeneralizedEstimatingEquationsModel, X, y, g; d=Gamma(), c=IndependenceCor(), l=LogLink())
     se = sqrt.(diag(vcov(m)))
@@ -334,12 +385,17 @@ end
     @test isapprox(pvalue(cst), 0.223437, atol = 1e-5)
 end
 
-@testset "frequency weights" begin
+@testitem "frequency weights" begin
 
-    Random.seed!(432)
-    X = randn(6, 2)
+    using StableRNGs
+    using LinearAlgebra
+    using Distributions
+
+    rng = StableRNG(432)
+
+    X = randn(rng, 6, 2)
     X[:, 1] .= 1
-    y = X[:, 1] + randn(6)
+    y = X[:, 1] + randn(rng, 6)
     y[6] = y[5]
     X[6, :] = X[5, :]
 
@@ -366,7 +422,10 @@ end
     @test isapprox(dispersion(m1), dispersion(m3))
 end
 
-@testset "linear/normal exchangeable model" begin
+@testitem "linear/normal exchangeable model" setup=[Gendat] begin
+
+    using LinearAlgebra
+    using Distributions
 
     y, _, X, g, _ = data1()
     m = fit(GeneralizedEstimatingEquationsModel, X[:, 1:1], y, g; d=Normal(), c=ExchangeableCor())
@@ -400,7 +459,11 @@ end
     @test isapprox(corparams(m4), 0.6409037, atol = 1e-4)
 end
 
-@testset "log/Poisson exchangeable model" begin
+@testitem "log/Poisson exchangeable model" setup=[Gendat] begin
+
+    using LinearAlgebra
+    using Distributions
+
     y, _, X, g, _ = data1()
     m = fit(GeneralizedEstimatingEquationsModel, X[:, 1:1], y, g; d=Poisson(), c=ExchangeableCor(0), l=LogLink(), fit_cor=false)
     se = sqrt.(diag(vcov(m)))
@@ -410,7 +473,11 @@ end
     @test isapprox(corparams(m), 0.130, atol = 1e-3)
 end
 
-@testset "log/Gamma exchangeable model" begin
+@testitem "log/Gamma exchangeable model" setup=[Gendat] begin
+
+    using LinearAlgebra
+    using Distributions
+
     y, _, X, g, _ = data1()
     m = fit(GeneralizedEstimatingEquationsModel, X, y, g; d=Gamma(), c=ExchangeableCor(), l=LogLink())
     se = sqrt.(diag(vcov(m)))
@@ -420,7 +487,11 @@ end
     @test isapprox(corparams(m), 0, atol = 1e-3)
 end
 
-@testset "logit/Binomial exchangeable model" begin
+@testitem "logit/Binomial exchangeable model" setup=[Gendat] begin
+
+    using LinearAlgebra
+    using Distributions
+
     _, z, X, g, _ = data1()
     m = fit(GeneralizedEstimatingEquationsModel, X, z, g; d=Binomial(), c=ExchangeableCor(), l=LogitLink())
     se = sqrt.(diag(vcov(m)))

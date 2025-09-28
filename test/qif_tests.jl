@@ -1,5 +1,10 @@
 
-@testset "QIF coefnames" begin
+@testitem "QIF coefnames" begin
+
+    using StableRNGs
+    using DataFrames
+    using StatsModels
+
     rng = StableRNG(1)
     df = DataFrame(
         y = randn(rng, 10),
@@ -11,7 +16,12 @@
     @test all(coefnames(m) .== ["(Intercept)", "xv1", "xv2"])
 end
 
-@testset "QIF score Jacobian" begin
+@testitem "QIF score Jacobian" begin
+
+    using StableRNGs
+    using Distributions
+    using GLM
+    using FiniteDifferences
 
     rng = StableRNG(123)
     gs = 10
@@ -56,7 +66,12 @@ end
     @test isapprox(scd, scd1, atol = 0.1, rtol = 0.2)
 end
 
-@testset "QIF fun/grad" begin
+@testitem "QIF fun/grad" begin
+
+    using StableRNGs
+    using Distributions
+    using GLM
+    using FiniteDifferences
 
     rng = StableRNG(123)
     gs = 10
@@ -91,7 +106,11 @@ end
     end
 end
 
-@testset "QIF independent observations Poisson" begin
+@testitem "QIF independent observations Poisson" begin
+
+    using StableRNGs
+    using Distributions
+    using GLM
 
     rng = StableRNG(123)
     gs = 10
@@ -132,7 +151,10 @@ end
     end
 end
 
-@testset "QIF independent observations linear" begin
+@testitem "QIF independent observations linear" begin
+
+    using StableRNGs
+    using LinearAlgebra
 
     rng = StableRNG(123)
     gs = 10
@@ -168,7 +190,10 @@ end
     end
 end
 
-@testset "QIF dependent observations linear" begin
+@testitem "QIF dependent observations linear" begin
+
+    using StableRNGs
+    using LinearAlgebra
 
     rng = StableRNG(123)
     gs = 10

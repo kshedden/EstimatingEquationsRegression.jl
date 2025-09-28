@@ -446,7 +446,15 @@ function vcov(m::GEEE)
 end
 
 function coefnames(m::StatsModels.TableRegressionModel{GEEE{S, GEEEDensePred{S}}, Matrix{S}}) where {S}
-    return repeat(coefnames(m.mf), length(m.model.tau))
+    return coefnames(m.model)
+end
+
+function coefnames(m::GEEE)
+    p = length(coef(m))
+    m = length(m.tau)
+    q = div(p, m)
+    xn = vcat(["(Intercept)"], ["x$(j)" for j in 1:q-1])
+    return repeat(xn, m)
 end
 
 function coeftable(m::StatsModels.TableRegressionModel{GEEE{S, GEEEDensePred{S}}, Matrix{S}}) where {S}

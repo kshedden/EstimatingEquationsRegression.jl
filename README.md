@@ -3,13 +3,15 @@
 This package fits regression models to data using estimating equations.
 Estimating equations are useful for carrying out regression analysis
 when the data are not independent, or when there are certain forms
-of heteroscedasticity.  This package currently support three methods:
+of heteroscedasticity.  This package currently support four methods:
 
 * Generalized Estimating Equations (GEE)
 
 * Quadratic Inference Functions (QIF)
 
 * Generalized Expectile Estimating Equations (GEEE)
+
+* Mean, variance, and association modeling (GEE2)
 
 ````julia
 using EstimatingEquationsRegression, Random, RDatasets, StatsModels, Plots
@@ -24,8 +26,8 @@ f = @formula(Gain ~ Pretot)
 m1 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :Class])
 
 # m2 uses an exchangeable working correlation
-m2 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :Class],
-         IdentityLink(), ConstantVar(), ExchangeableCor())
+m2 = fit(GeneralizedEstimatingEquationsModel, f, da, da[:, :Class];
+         l=IdentityLink(), v=ConstantVar(), c=ExchangeableCor())
 ````
 
 ````
@@ -94,7 +96,9 @@ H Cho, A Qu (2015). https://projecteuclid.org/journals/electronic-journal-of-sta
 A new GEE method to account for heteroscedasticity, using assymetric least-square regressions.
 A Barry, K Oualkacha, A Charpentier (2018). https://arxiv.org/abs/1810.09214
 
+On GEE for Mean-Variance-Correlation models: Variance estimation and model seslection.
+Z Xu, JP Fine, W Song, J Yan (2025). https://arxiv.org/pdf/2401.08172
+
 ---
 
 *This page was generated using [Literate.jl](https://github.com/fredrikekre/Literate.jl).*
-
