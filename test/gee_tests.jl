@@ -1,3 +1,18 @@
+@testitem "Check group identification" begin
+
+    using StableRNGs
+
+    g = [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
+    gix, mx = EstimatingEquationsRegression.groupix(g)
+    @test all(gix .== [1:1, 2:3, 4:6, 7:10])
+    @test mx == 4
+
+    g = [1, 1, 1, 1, 2, 3, 4, 4, 5, 6]
+    gix, mx = EstimatingEquationsRegression.groupix(g)
+    @test all(gix .== [1:4, 5:5, 6:6, 7:8, 9:9, 10:10])
+    @test mx == 4
+end
+
 @testitem "Check offset" setup=[Gendat] begin
 
     using StableRNGs

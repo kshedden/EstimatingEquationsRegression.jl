@@ -30,7 +30,7 @@
 
     for use_fml in [false, true]
         if use_fml
-            mm = fit(GeneralizedEstimatingEquations2Model, df, Xv, nothing, [], g, nothing; mean_fml=fml)
+            mm = fit(GeneralizedEstimatingEquations2Model, df, Xv, nothing, [], g, nothing; fml_mean=fml)
         else
             mm = fit(GeneralizedEstimatingEquations2Model, Xm, Xv, nothing, y, g, nothing)
         end
@@ -98,7 +98,7 @@ end
 
     for use_fml in [false, true]
         if use_fml
-            mm = fit(GeneralizedEstimatingEquations2Model, df, Xv, Xr, [], g, make_rcov; mean_fml=fml)
+            mm = fit(GeneralizedEstimatingEquations2Model, df, Xv, Xr, [], g, make_rcov; fml_mean=fml)
         else
             mm = fit(GeneralizedEstimatingEquations2Model, Xm, Xv, Xr, y, g, make_rcov)
         end

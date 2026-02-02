@@ -31,10 +31,18 @@ StatsBase = "0.34"
 StatsModels = "0.7"
 Test = "1.9"
 julia = "1.9"
+RCall = "0.14"
+ReTestItems = "1.35"
+StableRNGs = "1.0"
+FiniteDifferences = "0.12"
 
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+ReTestItems = "817f1d60-ba6b-4fd5-9520-3cf149f6a823"
+StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
+RCall = "6f49c342-dc21-5d91-9882-a32aef131414"
+FiniteDifferences = "26cc04aa-876d-5657-8c51-4c34ba976000"
 
 [targets]
-test = ["Aqua", "Test"]
+test = ["Aqua", "Test", "ReTestItems", "StableRNGs", "RCall", "FiniteDifferences"]

@@ -1,25 +1,23 @@
-# Return a 2 x m array, each column of which contains the indices
-# spanning one group; also return the size of the largest group.
-function groupix(g::AbstractVector)
+# Return a vector of UniRange values delineating the groups; also return the size of the largest group.
+function groupix(g::T) where {T<:AbstractVector}
 
     if !issorted(g)
         error("Group vector is not sorted")
     end
 
-    ii = Int[]
-    b, mx = 1, 0
-    for i = 2:length(g)
-        if g[i] != g[i-1]
-            push!(ii, b, i - 1)
-            mx = i - b > mx ? i - b : mx
-            b = i
+    ranges = UnitRange{Int}[]
+    startpos, maxsize = 1, 0
+    for pos = 2:length(g)
+        if g[pos] != g[pos-1] # Found a boundary
+            push!(ranges, startpos:(pos - 1))
+            maxsize = max(maxsize, pos - startpos)
+            startpos = pos
         end
     end
-    push!(ii, b, length(g))
-    mx = length(g) - b + 1 > mx ? length(g) - b + 1 : mx
-    ii = reshape(ii, 2, div(length(ii), 2))
+    push!(ranges, startpos:length(g))
+    maxsize = max(maxsize, length(g) - startpos + 1)
 
-    return tuple(ii, mx)
+    return ranges, maxsize
 end
 
 """

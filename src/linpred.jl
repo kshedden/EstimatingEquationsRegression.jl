@@ -77,6 +77,6 @@ function update_coef!(p::DensePred, numer::Vector{T}, denom::Matrix{T}; diagonal
     p.beta0 .+= p.delbeta
 end
 
-function updateD!(p::DensePred, dμdη::FPVector, i1::Int, i2::Int)
-    p.D = Diagonal(dμdη) * p.X[i1:i2, :]
+function updateD!(p::DensePred, dμdη::FPVector, gr::UnitRange{Int})
+    p.D = Diagonal(dμdη) * p.X[gr, :]
 end

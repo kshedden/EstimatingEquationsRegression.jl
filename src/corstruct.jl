@@ -68,11 +68,11 @@ mutable struct OrdinalIndependenceCor <: CorStruct
     numind::Int
 end
 
-function updatecor(c::AR1Cor, sresid::FPVector, g::Matrix{Int}, ddof::Int)
+function updatecor(c::AR1Cor, sresid::FPVector, g::Vector{UnitRange{Int}}, ddof::Int)
 
     lag0, lag1 = 0.0, 0.0
-    for i = 1:size(g, 2)
-        i1, i2 = g[1, i], g[2, i]
+    for i in eachindex(g)
+        i1, i2 = first(g[i]), last(g[i])
         q = i2 - i1 + 1 # group size
         if q < 2
             continue
@@ -93,19 +93,19 @@ function updatecor(c::AR1Cor, sresid::FPVector, g::Matrix{Int}, ddof::Int)
 end
 
 # Nothing to do for independence model.
-function updatecor(c::IndependenceCor, sresid::FPVector, g::Matrix{Int}, ddof::Int) end
-function updatecor(c::OrdinalIndependenceCor, sresid::FPVector, g::Matrix{Int}, ddof::Int) end
+function updatecor(c::IndependenceCor, sresid::FPVector, g::Vector{UnitRange{Int}}, ddof::Int) end
+function updatecor(c::OrdinalIndependenceCor, sresid::FPVector, g::Vector{UnitRange{Int}}, ddof::Int) end
 
-function updatecor(c::ExchangeableCor, sresid::FPVector, g::Matrix{Int}, ddof::Int)
+function updatecor(c::ExchangeableCor, sresid::FPVector, g::Vector{UnitRange{Int}}, ddof::Int)
 
     sxp, ssr = 0.0, 0.0
     npr, n = 0, 0
 
-    for i = 1:size(g, 2)
-        i1, i2 = g[1, i], g[2, i]
-        for j1 = i1:i2
+    for i in eachindex(g)
+        i1, i2 = first(g[i]), last(g[i])
+        for j1 in i1:i2
             ssr += sresid[j1]^2
-            for j2 = j1+1:i2
+            for j2 in j1+1:i2
                 sxp += sresid[j1] * sresid[j2]
             end
         end
@@ -131,9 +131,9 @@ function covsolve(c::OrdinalIndependenceCor, mu, sd, z)
     q = div(p, numind)
     ma = zeros(p, p)
     ii = 0
-    for k = 1:q
-        for i = 1:numind
-            for j = 1:numind
+    for k in 1:q
+        for i in 1:numind
+            for j in 1:numind
                 ma[ii+i, ii+j] = min(mu[ii+i], mu[ii+j]) - mu[ii+i] * mu[ii+j]
             end
         end

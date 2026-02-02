@@ -41,8 +41,8 @@ struct GEEEDensePred{T<:Real} <: GEEELinPred
     # The number of covariates
     p::Int
 
-    # Each column contains the first and last index of a group.
-    gix::Matrix{Int}
+    # Delineate the groups.
+    gix::Vector{UnitRange{Int}}
 
     # n x p covariate matrix, observations are rows, variables are columns
     X::Matrix{T}
@@ -56,8 +56,8 @@ end
 # Compute the product X * v where X is the submatrix of the design matrix
 # containing data for group 'g'.
 function xtvg(pp::GEEEDensePred, g::Int, rhs::T) where {T<:AbstractArray}
-    i1, i2 = pp.gix[:, g]
-    return pp.X[i1:i2, :]' * rhs
+    gr = pp.gix[g]
+    return pp.X[gr, :]' * rhs
 end
 
 """
@@ -73,8 +73,8 @@ mutable struct GEEE{T<:Real,L<:LinPred} <: AbstractGEE
     # The covariates
     pp::L
 
-    # Each column contains the first and last index of a group.
-    grpix::Matrix{Int}
+    # Each range delineates one group
+    grpix::Vector{UnitRange{Int}}
 
     # Vector of tau values for which expectiles are jointly estimated
     tau::Vector{Float64}
@@ -230,13 +230,13 @@ function score!(geee::GEEE, j::Int, scr::Vector{T}, denom::Matrix{T}) where {T<:
     iterprep!(geee, j)
 
     # Loop over the groups
-    for (g, (i1, i2)) in enumerate(eachcol(geee.grpix))
+    for (g, gr) in enumerate(geee.grpix)
 
         # Quantities for the current group
-        linpred1 = @view geee.rr.linpred[i1:i2, j]
-        cresid1 = @view geee.rr.cresid[i1:i2, j]
-        cresidx1 = @view geee.rr.cresidx[i1:i2, j]
-        sd1 = @view geee.rr.sd[i1:i2, j]
+        linpred1 = @view geee.rr.linpred[gr, j]
+        cresid1 = @view geee.rr.cresid[gr, j]
+        cresidx1 = @view geee.rr.cresidx[gr, j]
+        sd1 = @view geee.rr.sd[gr, j]
 
         # Update the score function
         update_score_group!(geee.pp, g, geee.cor[j], linpred1, sd1, cresidx1, 1.0, scr)
@@ -334,38 +334,20 @@ function set_vcov!(geee::GEEE)
     D0 = zeros(p * q, p * q)
 
     vv = zeros(p * q)
-    for (g, (i1, i2)) in enumerate(eachcol(geee.grpix))
+    for (g, gr) in enumerate(geee.grpix)
 
         vv .= 0
         for j = 1:q
-            linpred = @view geee.rr.linpred[i1:i2, j]
-            sd = @view geee.rr.sd[i1:i2, j]
-            cresid = @view geee.rr.cresid[i1:i2, j]
-            cresidx = @view geee.rr.cresidx[i1:i2, j]
+            linpred = @view geee.rr.linpred[gr, j]
+            sd = @view geee.rr.sd[gr, j]
+            cresid = @view geee.rr.cresid[gr, j]
+            cresidx = @view geee.rr.cresidx[gr, j]
 
             # Update D1
-            update_denom_group!(
-                geee.pp,
-                g,
-                geee.cor[j],
-                linpred,
-                sd,
-                cresid,
-                geee.tau_wt[j],
-                D1[j],
-            )
+            update_denom_group!(geee.pp, g, geee.cor[j], linpred, sd, cresid, geee.tau_wt[j], D1[j])
 
             jj = (j - 1) * p
-            update_score_group!(
-                geee.pp,
-                g,
-                geee.cor[j],
-                linpred,
-                sd,
-                cresidx,
-                geee.tau_wt[j],
-                @view(vv[jj+1:jj+p])
-            )
+            update_score_group!(geee.pp, g, geee.cor[j], linpred, sd, cresidx, geee.tau_wt[j], @view(vv[jj+1:jj+p]))
         end
         D0 .+= vv * vv'
     end

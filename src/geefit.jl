@@ -12,8 +12,8 @@ mutable struct GEEResp{T<:Real} <: ModResp
     "`y`: response vector"
     y::Vector{T}
 
-    "`grpix`: group positions, each column contains positions i1, i2 spanning one group"
-    grpix::Matrix{Int}
+    "`grpix`: delineate the groups"
+    grpix::Vector{UnitRange{Int}}
 
     "`awts`: analytic weights, the model variance is scaled by the reciprocal of awts"
     awts::Vector{T}
@@ -131,7 +131,7 @@ mutable struct GeneralizedEstimatingEquationsModel{G<:GEEResp,L<:LinPred} <: Abs
     converged::Bool
 end
 
-function GEEResp(y::Vector{T}, g::Matrix{Int}, awts::Vector{T}, fwts::Vector{T}, off::Vector{T}) where {T<:Real}
+function GEEResp(y::Vector{T}, g::Vector{UnitRange{Int}}, awts::Vector{T}, fwts::Vector{T}, off::Vector{T}) where {T<:Real}
     return GEEResp{T}(y, g, awts, fwts, similar(y), similar(y), similar(y), similar(y),
                       similar(y), similar(y), similar(y), off)
 end
@@ -173,14 +173,14 @@ function _update_group(mod::M, j::Int, last::Bool) where{M<:AbstractGEE}
 
     (; pp, rr, qq, cc) = mod
 
-    i1, i2 = rr.grpix[:, j]
+    gr = rr.grpix[j]
 
-    fwt = weights(mod; type=:frequency)[i1:i2]
-    updateD!(pp, rr.dμdη[i1:i2], i1, i2)
-    rr.viresid[i1:i2] .= covsolve(qq.cor, rr.mu[i1:i2], rr.sd[i1:i2], rr.resid[i1:i2])
-    pp.score_grp .= pp.D' * Diagonal(fwt) * rr.viresid[i1:i2]
+    fwt = weights(mod; type=:frequency)[gr]
+    updateD!(pp, rr.dμdη[gr], gr)
+    rr.viresid[gr] .= covsolve(qq.cor, rr.mu[gr], rr.sd[gr], rr.resid[gr])
+    pp.score_grp .= pp.D' * Diagonal(fwt) * rr.viresid[gr]
     pp.score .+= pp.score_grp
-    cc.DtViD_grp .= pp.D' * Diagonal(fwt) * covsolve(qq.cor, rr.mu[i1:i2], rr.sd[i1:i2], pp.D)
+    cc.DtViD_grp .= pp.D' * Diagonal(fwt) * covsolve(qq.cor, rr.mu[gr], rr.sd[gr], pp.D)
     cc.DtViD_sum .+= cc.DtViD_grp
 
     if last
@@ -199,7 +199,7 @@ function _iterate(mod::M, last::Bool) where{M<:AbstractGEE}
         cc.scrcov .= 0
     end
 
-    for j in 1:size(rr.grpix, 2)
+    for j in eachindex(rr.grpix)
         _update_group(mod, j, last)
     end
 
@@ -220,16 +220,16 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
     bcm_kc = zeros(m, m)
     nfail = 0
 
-    for (g, (i1, i2)) in enumerate(eachcol(r.grpix))
+    for (g, gr) in enumerate(r.grpix)
 
         # Computation of common quantities
-        awts = r.awts[i1:i2]
-        updateD!(p, r.dμdη[i1:i2], i1, i2)
-        vid = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], p.D)
+        awts = r.awts[gr]
+        updateD!(p, r.dμdη[gr], gr)
+        vid = covsolve(q.cor, r.mu[gr], r.sd[gr], p.D)
         vid .= vid ./ di
 
         # Group size
-        m = i2 - i1 + 1
+        m = first(size(gr))
 
         # This is m x m, where m is the group size.
         # It could be large.
@@ -245,14 +245,14 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
         eval .= (eval + abs.(eval)) ./ 2
         eval2 = 1 ./ sqrt.(eval)
         eval2[eval.==0] .= 0
-        ar = evec * diagm(eval2) * evec' * r.resid[i1:i2]
-        sr = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], real(ar))
+        ar = evec * diagm(eval2) * evec' * r.resid[gr]
+        sr = covsolve(q.cor, r.mu[gr], r.sd[gr], real(ar))
         sr = p.D' * sr
         bcm_kc .+= sr * sr'
 
         # Mancl-DeRouen
-        ar = (I(m) - h) \ r.resid[i1:i2]
-        sr = covsolve(q.cor, r.mu[i1:i2], r.sd[i1:i2], ar)
+        ar = (I(m) - h) \ r.resid[gr]
+        sr = covsolve(q.cor, r.mu[gr], r.sd[gr], ar)
         sr = p.D' * sr
         bcm_md .+= sr * sr'
     end
@@ -359,7 +359,7 @@ function fit!(mod::M; verbosity::Int=0, maxiter::Integer=100, atol::Float64=1e-6
     last = !fitcoef # Indicates that we are on the final iteration
     cvg = false
 
-    for iter = 1:maxiter
+    for iter in 1:maxiter
         _iterprep(mod)
         fitcor && updatecor(cor, sresid, grpix, ddof)
         _iterate(mod, last)
@@ -552,7 +552,7 @@ dof(x::GeneralizedEstimatingEquationsModel) =
 # Ensure that X, y, wts, and offset have the same type
 function prepargs(X, y, g, awts, fwts, offset)
 
-    (gi, mg) = groupix(g)
+    gi, mg = groupix(g)
 
     if !(size(X, 1) == length(y) == length(g) == length(awts) == length(fwts))
         m = @sprintf(
@@ -685,7 +685,7 @@ struct NoDistribution <: ContinuousUnivariateDistribution end
 canonicallink(::NoDistribution) = IdentityLink()
 
 """
-    fit(GeneralizedEstimatingEquationsModel, X, y, g, d, c, [l = canonicallink(d)]; <keyword arguments>)
+    fit(GeneralizedEstimatingEquationsModel, X, y, g; d, c, [l = canonicallink(d)], <keyword arguments>)
 
 Fit a generalized linear model to data using generalized estimating
 equations.  `X` and `y` can either be a matrix and a vector,
@@ -820,9 +820,15 @@ function predict(m::AbstractGEE; type=:linear)
     end
 end
 
+offset(gee::GeneralizedEstimatingEquationsModel) = gee.rr.offset
+
 function predict(m::AbstractGEE, newX::AbstractMatrix; type=:linear, offset=nothing)
 
     (; pp, qq) = m
+
+    if length(EstimatingEquationsRegression.offset(m)) > 0 && isnothing(offset)
+        @warn("Predicting on a model that was fit with an offset, but no offset was provided to predict.")
+    end
 
     lp = newX * pp.beta0
     if !isnothing(offset)

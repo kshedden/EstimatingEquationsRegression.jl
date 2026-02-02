@@ -69,7 +69,7 @@ mutable struct QIF{T<:Real,L<:Link,V<:Varfunc} <: AbstractMarginalModel
     beta::Vector{T}
 
     # Each column contains the first and last index of one group
-    gix::Matrix{Int}
+    gix::Vector{UnitRange{Int}}
 
     # The group labels, sorted
     grp::Vector
@@ -185,27 +185,27 @@ end
 
 # Calculate the score for group 'g' and add it to the current value of 'scr'.
 function score!(qif::QIF{T}, g::Int, scr::Vector{T}) where {T<:Real}
-    i1, i2 = qif.gix[:, g]
-    gs = i2 - i1 + 1
+    gr = qif.gix[g]
+    gs = first(size(gr))
     p = length(qif.beta)
-    sd = @view(qif.rr.sd[i1:i2])
-    dmudeta = @view(qif.rr.dmudeta[i1:i2])
-    sresid = @view(qif.rr.sresid[i1:i2])
+    sd = @view(qif.rr.sd[gr])
+    dmudeta = @view(qif.rr.dmudeta[gr])
+    sresid = @view(qif.rr.sresid[gr])
 
     jj = 0
     for b in qif.basis
         rb = rbasis(b, T, gs)
         rhs = Diagonal(dmudeta ./ sd) * rb * sresid
-        lmul!(qif.pp, rhs, @view(scr[jj+1:jj+p]), i1, i2)
+        lmul!(qif.pp, rhs, @view(scr[jj+1:jj+p]), first(gr), last(gr))
         jj += p
     end
 end
 
 # Calculate the average score function.
 function score!(qif::QIF{T}, scr::Vector{T}) where {T<:Real}
-    ngrp = size(qif.gix, 2)
+    ngrp = length(qif.gix)
     scr .= 0
-    for g = 1:ngrp
+    for g in 1:ngrp
         score!(qif, g, scr)
     end
 
@@ -215,17 +215,17 @@ end
 # Calculate the Jacobian of the score function for group 'g' and add it to
 # the current value of 'scd'.
 function scorederiv!(qif::QIF{T}, g::Int, scd::Matrix{T}) where {T<:Real}
-    i1, i2 = qif.gix[:, g]
+    gr = qif.gix[g]
     p = length(qif.beta)
-    gs = i2 - i1 + 1
-    sd = @view(qif.rr.sd[i1:i2])
+    gs = first(size(gr))
+    sd = @view(qif.rr.sd[gr])
     awts = weights(qif; type=:analytic)
-    vd = geevarderiv.(NoDistribution(), qif.varfunc, qif.rr.mu[i1:i2], awts[i1:i2])
-    dmudeta = @view(qif.rr.dmudeta[i1:i2])
-    d2mudeta2 = @view(qif.rr.d2mudeta2[i1:i2])
-    sresid = @view(qif.rr.sresid[i1:i2])
+    vd = geevarderiv.(NoDistribution(), qif.varfunc, qif.rr.mu[gr], awts[gr])
+    dmudeta = @view(qif.rr.dmudeta[gr])
+    d2mudeta2 = @view(qif.rr.d2mudeta2[gr])
+    sresid = @view(qif.rr.sresid[gr])
 
-    x = qif.pp.X[i1:i2, :]
+    x = qif.pp.X[gr, :]
 
     jj = 0
     for b in qif.basis
@@ -249,23 +249,19 @@ end
 
 # Calculate the Jacobian of the average score function.
 function scorederiv!(qif::QIF{T}, scd::Matrix{T}) where {T<:Real}
-    ngrp = size(qif.gix, 2)
+    ngrp = length(qif.gix)
     scd .= 0
-    for g = 1:ngrp
+    for g in 1:ngrp
         scorederiv!(qif, g, scd)
     end
     scd ./= ngrp
 end
 
-function iterate!(
-    qif::QIF{T};
-    gtol::Float64 = 1e-4,
-    verbose::Bool = false,
-)::Bool where {T<:Real}
+function iterate!(qif::QIF{T}; gtol::Float64 = 1e-4, verbose::Bool = false)::Bool where {T<:Real}
 
     p = length(qif.beta)
 
-    ngrp = size(qif.gix, 2)
+    ngrp = length(qif.gix)
     m = p * length(qif.basis)
     scr = zeros(m)
     scd = zeros(m, p)
@@ -310,13 +306,13 @@ function iterate!(
 end
 
 function updateCov!(qif::QIF)
-    ngrp = size(qif.gix, 2)
+    ngrp = length(qif.gix)
     qif.scov .= 0
     p = length(qif.beta)
     nb = length(qif.basis)
     scr = zeros(p * nb)
     iterprep!(qif, qif.beta)
-    for g = 1:ngrp
+    for g in 1:ngrp
         scr .= 0
         score!(qif, g, scr)
         qif.scov .+= scr * scr'
@@ -328,7 +324,7 @@ function get_fungrad(qif::QIF, scov::Matrix)
 
     p = length(qif.beta)      # number of parameters
     m = p * length(qif.basis) # number of score equations
-    ngrp = size(qif.gix, 2)   # number of groups
+    ngrp = length(qif.gix)    # number of groups
 
     # Objective function to minimize.
     fun = function (beta)
@@ -423,18 +419,7 @@ function fit(
     rr = QIFResp(y)
     pp = QIFDensePred(X)
     q = length(basis)
-    m = QIF(
-        rr,
-        pp,
-        zeros(p),
-        gix,
-        grp,
-        link,
-        varfunc,
-        Matrix{Float64}(I(p * q)),
-        basis,
-        false,
-    )
+    m = QIF(rr, pp, zeros(p), gix, grp, link, varfunc, Matrix{Float64}(I(p * q)), basis, false)
 
     if !isnothing(start)
         m.beta .= start
@@ -464,7 +449,7 @@ function vcov(m::QIF)
     p = length(m.beta)
     q = length(m.basis)
     scd = zeros(p * q, p)
-    ngrp = size(m.gix, 2)
+    ngrp = length(m.gix)
     scorederiv!(m, scd)
     return inv(scd' * (m.scov \ scd)) / ngrp
 end

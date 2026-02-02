@@ -29,7 +29,7 @@ export corstruct, CorStruct, IndependenceCor, ExchangeableCor, OrdinalIndependen
 
 export fit!, GeneralizedEstimatingEquationsModel, resid_pearson
 export corparams, dispersion, dof, scoretest, gee, NoDistribution
-export expand_ordinal
+export expand_ordinal, offset
 
 # GEEE exports
 export GEEE, geee
