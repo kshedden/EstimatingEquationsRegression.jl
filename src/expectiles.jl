@@ -101,42 +101,16 @@ mutable struct GEEE{T<:Real,L<:LinPred} <: AbstractGEE
     converged::Vector{Bool}
 end
 
-function update_score_group!(
-    pp::T,
-    g::Int,
-    cor::CorStruct,
-    linpred::AbstractVector,
-    sd::AbstractVector,
-    resid::AbstractVector,
-    f,
-    scr,
-) where {T<:LinPred}
+function update_score_group!(pp::T, g::Int, cor::CorStruct, linpred::AbstractVector, sd::AbstractVector, resid::AbstractVector, f, scr) where {T<:LinPred}
     scr .+= xtvg(pp, g, f * covsolve(cor, linpred, sd, resid))
 end
 
-function update_denom_group!(
-    pp::T,
-    g::Int,
-    cor::CorStruct,
-    linpred::AbstractVector,
-    sd::AbstractVector,
-    cresid::AbstractVector,
-    f,
-    denom,
-) where {T<:LinPred}
+function update_denom_group!(pp::T, g::Int, cor::CorStruct, linpred::AbstractVector, sd::AbstractVector, cresid::AbstractVector, f, denom) where {T<:LinPred}
     u = xtvg(pp, g, Diagonal(cresid))
     denom .+= xtvg(pp, g, f * covsolve(cor, linpred, sd, u'))
 end
 
-function GEEE(
-    y,
-    X,
-    grp,
-    tau;
-    cor = CorStruct[IndependenceCor() for _ in eachindex(tau)],
-    varfunc = nothing,
-    tau_wt = nothing,
-)
+function GEEE(y, X, grp, tau; cor=CorStruct[IndependenceCor() for _ in eachindex(tau)], varfunc=nothing, tau_wt=nothing)
     @assert length(y) == size(X, 1) == length(grp)
 
     if !issorted(grp)
@@ -169,30 +143,12 @@ function GEEE(
     vcov = zeros(p * q, p * q)
 
     T = eltype(y)
-    rr = GEEEResp(
-        y,
-        grp,
-        zeros(T, length(y), length(tau)),
-        zeros(T, length(y), length(tau)),
-        zeros(T, length(y), length(tau)),
-        zeros(T, length(y), length(tau)),
-        zeros(T, length(y), length(tau)),
-    )
+    rr = GEEEResp(y, grp, zeros(T, length(y), length(tau)), zeros(T, length(y), length(tau)),
+                  zeros(T, length(y), length(tau)), zeros(T, length(y), length(tau)),
+                  zeros(T, length(y), length(tau)))
     pp = GEEEDensePred(n, p, gix, X)
 
-    return GEEE(
-        rr,
-        pp,
-        gix,
-        tau,
-        tau_wt,
-        beta,
-        cor,
-        varfunc,
-        vcov,
-        mx,
-        zeros(Bool, length(tau)),
-    )
+    return GEEE(rr, pp, gix, tau, tau_wt, beta, cor, varfunc, vcov, mx, zeros(Bool, length(tau)))
 end
 
 # Place the linear predictor for the j^th tau value into linpred.
@@ -247,7 +203,7 @@ function score!(geee::GEEE, j::Int, scr::Vector{T}, denom::Matrix{T}) where {T<:
 end
 
 # Apply the check function in-place to v.
-function check!(v::AbstractVector{T}, tau::Float64) where {T<:Real}
+function check!(v, tau::Float64)
     for j in eachindex(v)
         if v[j] < 0
             v[j] = 1 - tau
@@ -257,9 +213,10 @@ function check!(v::AbstractVector{T}, tau::Float64) where {T<:Real}
     end
 end
 
-# Update the parameter estimates for the j^th expectile.  If 'upcor' is true,
-# first update the correlation parameters.
-function update_params!(geee::GEEE, j::Int, upcor::Bool)::Float64
+# Update the parameter estimates for the j^th expectile and return the norm
+# of the difference between the updated and original parameters.  If 'upcor'
+# is true, first update the correlation parameters.
+function update_params!(geee::GEEE, j::Int, upcor::Bool)
 
     if upcor
         p = length(geee.beta)
@@ -279,21 +236,14 @@ function update_params!(geee::GEEE, j::Int, upcor::Bool)::Float64
 end
 
 # Estimate the coefficients for the j^th expectile.
-function fit_tau!(
-    geee::GEEE,
-    j::Int;
-    maxiter::Int = 100,
-    tol::Real = 1e-8,
-    updatecor::Bool = true,
-    fitargs...,
-)
+function fit_tau!(geee::GEEE, j::Int; maxiter::Int = 100, tol::Real = 1e-8, updatecor::Bool = true, fitargs...)
 
     # Fit with covariance updates.
-    for itr = 1:maxiter
+    for itr in 1:maxiter
 
         # Let the parameters catch up
         ss = 0.0
-        for itr1 = 1:maxiter
+        for itr1 in 1:maxiter
             ss = update_params!(geee, j, false)
             if ss < tol
                 break
@@ -400,21 +350,17 @@ function fit!(geee::GEEE; fitargs...)
     return geee
 end
 
-function fit(
-    ::Type{GEEE},
-    X::AbstractMatrix{T},
-    y::AbstractVector{T},
-    g::AbstractVector,
-    tau::Vector{Float64},
-    c::CorStruct = IndependenceCor();
-    dofit::Bool = true,
-    fitargs...,
-) where {T<:Real}
+function fit(::Type{GEEE}, X::T, y, g, tau::Vector{Float64}, c::CorStruct=IndependenceCor();
+             dofit::Bool=true, fitargs...) where{T<:AbstractArray}
 
     c = CorStruct[copy(c) for _ in eachindex(tau)]
-    geee = GEEE(y, X, g, tau; cor = c)
+    geee = GEEE(y, X, g, tau; cor=c)
 
-    return dofit ? fit!(geee; fitargs...) : geee
+    if dofit
+        fit!(geee; fitargs...)
+    end
+
+    return geee
 end
 
 geee(F, D, args...; kwargs...) = fit(GEEE, F, D, args...; kwargs...)

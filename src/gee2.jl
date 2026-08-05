@@ -603,7 +603,7 @@ function show(io::IO, mm::GeneralizedEstimatingEquations2Model)
 
     tf = TextTableFormat(borders=text_table_borders__compact)
     pretty_table(io, ta; table_format=tf, show_column_labels=false)
-    show(io, coeftable(mm))
+    show(io, MIME(Symbol("text/plain")), coeftable(mm))
 end
 
 function coefnames(mm::GeneralizedEstimatingEquations2Model)

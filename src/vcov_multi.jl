@@ -104,7 +104,7 @@ function vcov_meat(gee::GeneralizedEstimatingEquations2Model...)
 
     M = zeros(m*t, m*t)
 
-    # Fill in the matri block-wise.
+    # Fill in the matrix block-wise.
     for j1 in 1:m
 
         # The diagonal blocks are the meat matrices for the individual
