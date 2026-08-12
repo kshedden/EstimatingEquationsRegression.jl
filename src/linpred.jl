@@ -47,10 +47,14 @@ function nobs(pp::DensePred)
     return size(pp.X, 1)
 end
 
-function updateη!(p::DensePred, η::FPVector, off::FPVector)
-    η .= p.X * p.beta0
+function npred(pp::DensePred)
+    return size(pp.X, 2)
+end
+
+function update_lp!(p::DensePred, lp::FPVector, off::FPVector)
+    lp .= p.X * p.beta0
     if length(off) > 0
-        η .+= off
+        lp .+= off
     end
 end
 
@@ -77,6 +81,6 @@ function update_coef!(p::DensePred, numer::Vector{T}, denom::Matrix{T}; diagonal
     p.beta0 .+= p.delbeta
 end
 
-function updateD!(p::DensePred, dμdη::FPVector, gr::UnitRange{Int})
-    p.D = Diagonal(dμdη) * p.X[gr, :]
+function updateD!(p::DensePred, dmu_dlp::FPVector, gr::UnitRange{Int})
+    p.D = Diagonal(dmu_dlp) * p.X[gr, :]
 end

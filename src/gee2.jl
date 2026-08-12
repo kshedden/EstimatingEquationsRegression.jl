@@ -397,7 +397,7 @@ function tri_indices_sample(gr, cor_pair_factor)
         # Get the row and column for each random position
         p = Int(floor((sqrt(1 + 8*(jj - 1)) - 1) / 2))
         i1 = p + 2
-        i2 = Int(jj - 1 - p * (p + 1) / 2 + 1)
+        i2 = jj - 1 - div(p * (p + 1), 2) + 1
         I[:, ii] = [i1, i2]
     end
     return I
@@ -611,7 +611,7 @@ function coefnames(mm::GeneralizedEstimatingEquations2Model)
     q = size(modelmatrix(mm.scale_model), 2)
     r = isnothing(mm.cor_model) ? 0 : size(modelmatrix(mm.cor_model), 2)
     vnames_mean = isnothing(mm.mean_tablemodel) ? ["Mean X$(i)" for i in 1:p] : ["Mean $(x)" for x in coefnames(mm.mean_tablemodel)]
-    vnames_scale = isnothing(mm.scale_tablemodel) ? ["Scale X$(i)" for i in 1:p] : ["Scale $(x)" for x in coefnames(mm.scale_tablemodel)]
+    vnames_scale = isnothing(mm.scale_tablemodel) ? ["Scale X$(i)" for i in 1:q] : ["Scale $(x)" for x in coefnames(mm.scale_tablemodel)]
     vnames_cor = ["Cor X$(i)" for i in 1:r]
     vnames = vcat(vnames_mean, vnames_scale, vnames_cor)
     return vnames

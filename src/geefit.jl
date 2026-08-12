@@ -21,8 +21,8 @@ mutable struct GEEResp{T<:Real} <: ModResp
     "`fwts`: frequency weights, each observation is replicated by the given weight value"
     fwts::Vector{T}
 
-    "`η`: the linear predictor"
-    η::Vector{T}
+    "`lp`: the linear predictor"
+    lp::Vector{T}
 
     "`mu`: the mean"
     mu::Vector{T}
@@ -37,7 +37,7 @@ mutable struct GEEResp{T<:Real} <: ModResp
     sd::Vector{T}
 
     "`dμdη`: derivative of mean with respect to linear predictor"
-    dμdη::Vector{T}
+    dmu_dlp::Vector{T}
 
     "`viresid`: whitened residuals"
     viresid::Vector{T}
@@ -54,7 +54,7 @@ working correlation structure.
 """
 struct GEEprop
 
-    "`L`: the link function (maps from mean to linear predictor)"
+    "`link`: the link function (maps from mean to linear predictor)"
     link::Link
 
     "`varfunc`: used to determine the variance, only one of varfunc and `dist` should be specified"
@@ -142,10 +142,10 @@ function _iterprep(mod::M) where{M<:AbstractGEE}
     (; pp, rr, qq, cc) = mod
 
     # Update the linear predictor
-    updateη!(pp, rr.η, rr.offset)
+    update_lp!(pp, rr.lp, rr.offset)
 
     # Update the conditional means
-    rr.mu .= linkinv.(qq.link, rr.η)
+    rr.mu .= linkinv.(qq.link, rr.lp)
 
     # Update the raw residuals
     rr.resid .= rr.y .- rr.mu
@@ -162,7 +162,7 @@ function _iterprep(mod::M) where{M<:AbstractGEE}
     rr.sresid .= rr.resid ./ rr.sd
 
     # Update the derivative of the mean function with respect to the linear predictor
-    rr.dμdη .= mueta.(qq.link, rr.η)
+    rr.dmu_dlp .= mueta.(qq.link, rr.lp)
 
     cc.DtViD_sum .= 0
     pp.score .= 0
@@ -176,7 +176,7 @@ function _update_group(mod::M, j::Int, last::Bool) where{M<:AbstractGEE}
     gr = rr.grpix[j]
 
     fwt = weights(mod; type=:frequency)[gr]
-    updateD!(pp, rr.dμdη[gr], gr)
+    updateD!(pp, rr.dmu_dlp[gr], gr)
     rr.viresid[gr] .= covsolve(qq.cor, rr.mu[gr], rr.sd[gr], rr.resid[gr])
     pp.score_grp .= pp.D' * Diagonal(fwt) * rr.viresid[gr]
     pp.score .+= pp.score_grp
@@ -224,7 +224,7 @@ function _update_bc!(p::LinPred, r::GEEResp, q::GEEprop, c::GEECov, di::Float64)
 
         # Computation of common quantities
         awts = r.awts[gr]
-        updateD!(p, r.dμdη[gr], gr)
+        updateD!(p, r.dmu_dlp[gr], gr)
         vid = covsolve(q.cor, r.mu[gr], r.sd[gr], p.D)
         vid .= vid ./ di
 
@@ -343,7 +343,7 @@ function fit!(mod::M; verbosity::Int=0, maxiter::Integer=100, atol::Float64=1e-6
 
     (; pp, rr, qq, cc) = mod
     (; score) = pp
-    (; y, grpix, η, mu, sd, dμdη, viresid, resid, sresid, offset) = rr
+    (; y, grpix, lp, mu, sd, dmu_dlp, viresid, resid, sresid, offset) = rr
     (; link, dist, cor, ddof) = qq
     (; scrcov, nacov, DtViD_sum, DtViD_grp) = cc
 
@@ -522,6 +522,10 @@ end
 
 function nobs(mm::GeneralizedEstimatingEquationsModel)
     return nobs(mm.pp)
+end
+
+function npred(mm::GeneralizedEstimatingEquationsModel)
+    return npred(mm.pp)
 end
 
 function coeftable(
