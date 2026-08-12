@@ -38,25 +38,7 @@ mutable struct GeneralizedEstimatingEquations2Model <: AbstractGEE
     vcov::GEE2VCov
 end
 
-struct SigmoidLink <: Link
-    lower::Float64
-    upper::Float64
-    range::Float64
-    eps::Float64
-end
-
-SigmoidLink(l, u) = SigmoidLink(l, u, u-l, (u-l)/10000)
-
-function linkfun(sl::SigmoidLink, x::Real)
-    x = clamp(x, sl.lower+sl.eps, sl.upper-sl.eps)
-    return log(x - sl.lower) - log(sl.upper - x)
-end
-
-function linkinv(sl::SigmoidLink, x::Real)
-    return sl.range / (1 + exp(-x)) + sl.lower
-end
-
-# TODO GLM no longer has mueta
+# TODO GLM no longer has mueta, instead extract the second return value from inverselink.
 function mueta(sl::SigmoidLink, x::Real)
     return sl.range / ((1 + exp(-x)) * (1 + exp(x)))
 end
