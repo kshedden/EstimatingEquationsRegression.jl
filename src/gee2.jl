@@ -110,7 +110,7 @@ function GeneralizedEstimatingEquations2Model(Xm::Union{AbstractMatrix,DataFrame
                                               make_rcov; fml_mean=nothing, link_mean=IdentityLink(), varfunc_mean=ConstantVar(),
                                               corstruct_mean=IndependenceCor(), offset_mean=Float64[], fml_scale=nothing,
                                               link_scale=LogLink(), varfunc_scale=IdentityVar(), corstruct_scale=IndependenceCor(),
-                                              link_cor=SigmoidLink(-1, 1), varfunc_cor=ConstantVar(),
+                                              offset_scale=Float64, link_cor=SigmoidLink(-1, 1), varfunc_cor=ConstantVar(),
                                               corstruct_cor=IndependenceCor(), cor_pair_factor::Float64=0, fwts=nothing)
 
     mean_tablemodel = nothing
@@ -140,14 +140,14 @@ function GeneralizedEstimatingEquations2Model(Xm::Union{AbstractMatrix,DataFrame
     if isnothing(fml_scale)
         gee2_check_arrays(g, Xm, Xv, Xr)
         scale_model = fit(GeneralizedEstimatingEquationsModel, Xv, zeros(n), g; l=link_scale, v=varfunc_scale,
-                          c=corstruct_scale, d=NoDistribution(), dofit=false, fwts=fwtsv)
+                          c=corstruct_scale, offset=offset_scale, d=NoDistribution(), dofit=false, fwts=fwtsv)
     elseif typeof(fml_scale) <: AbstractTerm
         gee2_check_arrays(g, Xm, Xv, Xr)
         Xv = copy(Xv) # don't add columns to the caller's dataframe
         Xv[:, :squared_residual] = zeros(n)
         fml_scale = term(:squared_residual) ~ fml_scale.rhs
         scale_tablemodel = fit(GeneralizedEstimatingEquationsModel, fml_scale, Xv, g; l=link_scale, v=varfunc_scale,
-                              c=corstruct_scale, d=NoDistribution(), dofit=false, fwts=fwtsv)
+                              c=corstruct_scale, offset=offset_scale, d=NoDistribution(), dofit=false, fwts=fwtsv)
         scale_model = scale_tablemodel.model
     else
         error("Invalid type $(typeof(fml_scale)) for 'fml_scale'")
@@ -171,15 +171,15 @@ end
 
 function fit(::Type{GeneralizedEstimatingEquations2Model}, Xm::Union{AbstractMatrix,AbstractDataFrame},
              Xv::Union{AbstractMatrix,AbstractDataFrame}, Xr::Union{Nothing,AbstractMatrix}, y::AbstractVector, g::AbstractVector, make_rcov;
-             fml_mean=nothing, link_mean=IdentityLink(), offset_mean=Float64[], varfunc_mean=ConstantVar(), corstruct_mean=IndependenceCor(),
-             fml_scale=nothing, link_scale=LogLink(), varfunc_scale=PowerVar(2), corstruct_scale=IndependenceCor(),
+             fml_mean=nothing, link_mean=IdentityLink(), varfunc_mean=ConstantVar(), offset_mean=Float64[], corstruct_mean=IndependenceCor(),
+             fml_scale=nothing, link_scale=LogLink(), varfunc_scale=PowerVar(2), offset_scale=Float64[], corstruct_scale=IndependenceCor(),
              link_cor=SigmoidLink(-1, 1), varfunc_cor=ConstantVar(), corstruct_cor=IndependenceCor(), dofit=true,
              verbosity=0, maxiter=10, cor_pair_factor::Float64=0.0, fwts=nothing)
 
     gee = GeneralizedEstimatingEquations2Model(Xm, Xv, Xr, y, g, make_rcov; fml_mean=fml_mean,
                                                link_mean=link_mean, varfunc_mean=varfunc_mean, corstruct_mean=corstruct_mean,
                                                offset_mean=offset_mean, link_scale=link_scale, varfunc_scale=varfunc_scale,
-                                               fml_scale=fml_scale, corstruct_scale=corstruct_scale,
+                                               fml_scale=fml_scale, corstruct_scale=corstruct_scale, offset_scale=offset_scale,
                                                link_cor=link_cor, varfunc_cor=varfunc_cor, corstruct_cor=corstruct_cor,
                                                cor_pair_factor=cor_pair_factor, fwts=fwts)
 
