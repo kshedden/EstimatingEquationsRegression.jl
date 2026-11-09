@@ -479,7 +479,7 @@ function vcov(gee::GeneralizedEstimatingEquations2Model; cov_type::String="")
         cor_mu1 = cor_model.rr.mu[gr2]
         cor_sd1 = cor_model.rr.sd[gr2]
 
-        # Update the meat for the correlation marameters
+        # Update the meat for the correlation parameters
         M[p+q+1:p+q+r, 1:p] .+= cor_model.pp.score_grp * mean_model.pp.score_grp'
         M[p+q+1:p+q+r, p+1:p+q] .+= cor_model.pp.score_grp * scale_model.pp.score_grp'
         M[p+q+1:p+q+r, p+q+1:p+q+r] .+= cor_model.pp.score_grp * cor_model.pp.score_grp'

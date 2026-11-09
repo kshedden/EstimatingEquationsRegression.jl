@@ -1,2 +1,3 @@
 [deps]
 EstimatingEquationsRegression = "29055884-00e7-4984-94b8-2baec6a723d6"
+StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"

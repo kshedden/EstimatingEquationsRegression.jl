@@ -85,6 +85,7 @@ function vcov_meat(gee::GeneralizedEstimatingEquations2Model...)
 
     # The bread/meat of the individual models are computed lazily, so make sure that the
     # are present.
+    # TODO: does this have any effect?
     for g in gee
         vcov(g)
     end
@@ -107,15 +108,18 @@ function vcov_meat(gee::GeneralizedEstimatingEquations2Model...)
     # Fill in the matrix block-wise.
     for j1 in 1:m
 
+        r1 = ((j1-1)*t+1):(j1*t)
+
         # The diagonal blocks are the meat matrices for the individual
         # models, which have already been computed.
-        M[(j1-1)*t+1:j1*t, (j1-1)*t+1:j1*t] = gee[j1].vcov.M
+        M[r1, r1] .= gee[j1].vcov.M
 
         # The between-model meat matrix.
         for j2 in j1+1:m
+            r2 = ((j2-1)*t+1):(j2*t)
             M0 = vcov_meat_pair(gee[j1], gee[j2])
-            M[(j1-1)*t+1:j1*t, (j2-1)*t+1:j2*t] = M0
-            M[(j2-1)*t+1:j2*t, (j1-1)*t+1:j1*t] = M0'
+            M[r1, r2] .= M0
+            M[r2, r1] .= M0'
         end
     end
 
@@ -138,6 +142,7 @@ function vcov_meat_pair(gee1::GeneralizedEstimatingEquations2Model, gee2::Genera
 
     # The bread/meat of the individual models are computed lazily, so make sure that the
     # are present.
+    # TODO: this doesn't seem to have any effect
     vcov(gee1)
     vcov(gee2)
 
@@ -147,6 +152,7 @@ function vcov_meat_pair(gee1::GeneralizedEstimatingEquations2Model, gee2::Genera
     Xr1 = isnothing(gee1.cor_model) ? zeros(0, 0) : modelmatrix(gee1.cor_model)
 
     # These should be the same between gee1 and gee2
+    # TODO: we could support different dimensions
     p, q = size(Xm1, 2), size(Xv1, 2)
     r = isnothing(gee1.cor_model) ? 0 : size(Xr1, 2)
     t = p + q + r
@@ -166,10 +172,7 @@ function vcov_meat_pair(gee1::GeneralizedEstimatingEquations2Model, gee2::Genera
     # Index the correlation model groups, which may not be aligned with the mean model groups.
     jc = 0
 
-    for j in 1:size(gee1.mean_model.rr.grpix, 2)
-
-        # This should be the same for gee1 and gee2
-        i1, i2 = gee1.mean_model.rr.grpix[:, j]
+    for j in eachindex(gee1.mean_model.rr.grpix)
 
         _update_group(gee1.mean_model, j, false)
         _update_group(gee1.scale_model, j, false)

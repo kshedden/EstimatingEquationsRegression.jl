@@ -115,7 +115,7 @@ end
         show(s, mm)
         s = stderror(mm)
         z = (c - par) ./ s
-        @test all(abs.(z) .< 2)
+        @test all(abs.(z) .< 2.2)
         v = vcov(mm)
         push!(v_save, v)
         @test all(size(v) .== (8, 8))

@@ -42,14 +42,22 @@
     mm3 = fit(GeneralizedEstimatingEquations2Model, Xm, Xv, Xr, y[:, 3], g, make_rcov;
               verbosity=0, cor_pair_factor=0.0)
 
-    vc = vcov(mm1, mm2, mm3) |> first
+    vc, B, M = vcov(mm1, mm2, mm3)
 
+    # Test that the diagonal blocks from vcov_multi agree with the results
+    # of calling vcov directly.
     t = size(Xm, 2) + size(Xv, 2) + 3
     @test isapprox(vc[1:t, 1:t], vcov(mm1))
     @test isapprox(vc[t+1:2*t, t+1:2*t], vcov(mm2))
     @test isapprox(vc[2*t+1:3*t, 2*t+1:3*t], vcov(mm3))
 
+    # Test for symmetry and positive definiteness
     @test maximum(abs.(vc - vc')) < 1e-10
     a, _ = eigen(vc)
     @test all(a .> 0)
+
+    # In this case, the diagonal and off-diagonal blocks should be identical
+    vc, B, M = vcov(mm1, mm1)
+    @test isapprox(vc[1:t, 1:t], vc[1:t, t+1:2*t])
+    @test isapprox(M[1:t, 1:t], M[1:t, t+1:2*t])
 end
